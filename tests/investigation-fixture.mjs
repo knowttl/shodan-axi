@@ -22,6 +22,7 @@ export async function withInvestigation(check) {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ path: url.pathname, query: Object.fromEntries(url.searchParams) })
       if (mode === 'denied') { response.writeHead(403); response.end('{"error":"denied"}'); return }
+      if (mode === 'redirect') { response.writeHead(301, { location: 'https://invalid.example/' }); response.end(); return }
       if (mode === 'malformed') { response.end('{broken'); return }
       if (mode === 'timeout') { request.socket.destroy(); return }
       if (mode === 'bad-port') { response.end('[22,"443"]'); return }
@@ -43,6 +44,13 @@ export async function withInvestigation(check) {
         '/tools/myip': request.headers['x-test-family'] === 'ipv6' ? '2001:db8::7' : '192.0.2.7',
         '/192.0.2.7': { ip: '192.0.2.7', ports: [443], cpes: [], hostnames: [], tags: [], vulns: ['CVE-2020-0001'] },
         '/labs/honeyscore/192.0.2.7': 0.25, '/shodan/services': { 443: 'https' },
+        '/shodan/query': { total: 11, matches: [{ title: 'Synthetic TLS', query: 'port:443', votes: 3 }] },
+        '/shodan/query/search': { total: 1, matches: [{ title: 'Synthetic TLS', query: 'port:443' }] },
+        '/shodan/query/tags': { total: 2, matches: [{ value: 'test', count: 3 }, { value: 'tls', count: 2 }].slice(0, Number(url.searchParams.get('size') ?? 10)) },
+        '/api/v1/search': { total: 7, matches: [{ month: '2026-09', count: 3 }, { month: '2026-10', count: 4 }], facets: { country: [{ key: '2026-10', values: [{ value: 'CA', count: 4 }] }, { key: '2026-09', values: [{ value: 'US', count: 3 }] }] } },
+        '/api/v1/search/filters': ['all', 'asn', 'has_ipv6'], '/api/v1/search/facets': ['asn', 'country', 'vuln.verified'],
+        '/api/search': { total: 1, matches: [{ _id: '2020-0001', source: 'CVE', cve: 'CVE-2020-0001', description: 'x'.repeat(600) }], facets: { source: [{ value: 'CVE', count: 1 }] } },
+        '/api/count': { total: 1, facets: { source: [{ value: 'CVE', count: 1 }] } },
       }
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
@@ -67,7 +75,7 @@ export async function withInvestigation(check) {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const origin = `https://127.0.0.1:${server.address().port}`
     const preload = join(root, 'routing.mjs')
-    await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
+    await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
     const config = join(root, 'config.json')
     await writeFile(config, JSON.stringify({ version: 1, defaultProfile: 'selected', profiles: { selected: { auth: 'api-key', origin, apiKey: { env: 'TEST_SHODAN_KEY' } } } }), { mode: 0o600 })
     const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload}`, NODE_EXTRA_CA_CERTS: certFile }
