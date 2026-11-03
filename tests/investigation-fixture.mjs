@@ -46,7 +46,7 @@ export async function withInvestigation(check) {
         '/labs/honeyscore/192.0.2.7': 0.25, '/shodan/services': { 443: 'https' },
         '/shodan/query': { total: 11, matches: [{ title: 'Synthetic TLS', query: 'port:443', votes: 3 }] },
         '/shodan/query/search': { total: 1, matches: [{ title: 'Synthetic TLS', query: 'port:443' }] },
-        '/shodan/query/tags': { total: 2, matches: [{ value: 'test', count: 3 }, { value: 'tls', count: 2 }] },
+        '/shodan/query/tags': { total: 2, matches: [{ value: 'test', count: 3 }, { value: 'tls', count: 2 }].slice(0, Number(url.searchParams.get('size') ?? 10)) },
         '/api/v1/search': { total: 7, matches: [{ month: '2026-09', count: 3 }, { month: '2026-10', count: 4 }], facets: { country: [{ key: '2026-10', values: [{ value: 'CA', count: 4 }] }, { key: '2026-09', values: [{ value: 'US', count: 3 }] }] } },
         '/api/v1/search/filters': ['all', 'asn', 'has_ipv6'], '/api/v1/search/facets': ['asn', 'country', 'vuln.verified'],
         '/api/search': { total: 1, matches: [{ _id: '2020-0001', source: 'CVE', cve: 'CVE-2020-0001', description: 'x'.repeat(600) }], facets: { source: [{ value: 'CVE', count: 1 }] } },

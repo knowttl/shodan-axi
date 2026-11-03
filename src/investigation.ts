@@ -138,6 +138,7 @@ async function appendArtifact(filename: string, bytes: Buffer): Promise<{ path: 
 async function save(plan: Investigation, payload: unknown, key: string, destination?: string): Promise<{ path: string; appendedBytes: number; appendedSha256: string } | undefined> {
   let filename = destination ?? value(plan.flags, '--filename') ?? (plan.flags.has('--save') ? `${plan.argument ?? 'results'}.json.gz` : undefined)
   if (!filename) return undefined
+  if (plan.flags.has('--save')) filename = filename.replace(/[/\\]/g, '-')
   if (!filename.endsWith('.json.gz')) filename += '.json.gz'
   const safe = clean(payload, key)
   const body = Array.isArray(safe) ? safe : [safe]
@@ -192,7 +193,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
     const item = operation.id === 'OP-033' ? z.object({ value: z.string(), count: z.number().int().nonnegative() }).passthrough()
       : z.object({ title: z.string(), query: z.string() }).passthrough()
     const result = parse(z.object({ matches: z.array(item), total: z.number().int().nonnegative() }).passthrough(), raw)
-    const complete = operation.id === 'OP-033' || (page === 1 && result.matches.length >= result.total)
+    const complete = page === 1 && result.matches.length >= result.total
     return { items: result.matches, count: result.matches.length, total: result.total, ...(operation.id === 'OP-033' ? {} : { page }), complete }
   }
   if (operation.id === 'OP-055' || operation.id === 'OP-056') return { items: parse(z.array(z.string()), raw), sourceFamily: 'trends' }
