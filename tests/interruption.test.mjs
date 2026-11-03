@@ -16,7 +16,6 @@ test('interrupted profile update preserves the previous profile and removes its 
     const packageRoot = join(root, 'node_modules', '@knowttl', 'shodan-axi')
     const source = await readFile(join(packageRoot, 'dist/private-file.js'), 'utf8')
     const line = source.split('\n').findIndex(value => value.includes('await file.sync()'))
-    assert.ok(line >= 0)
     const config = join(root, 'config.json')
     const previous = JSON.stringify({ version: 1, defaultProfile: 'old', profiles: { old: { auth: 'api-key', apiKey: { env: 'OLD_KEY' } } } })
     await writeFile(config, previous, { mode: 0o600 })

@@ -74,8 +74,8 @@ export async function writePrivate(path: string, content: string, options: Optio
     await file.writeFile(content)
     await file.sync()
     await file.close()
-    if (interrupted) throw new ToolError('INTERRUPTED', 'Profile update was interrupted', 'Retry the update')
     for (let attempt = 0; ; attempt++) {
+      if (interrupted) throw new ToolError('INTERRUPTED', 'Profile update was interrupted', 'Retry the update')
       try { await rename(temporary, path); break } catch (error) {
         if (platform !== 'win32' || !(error instanceof Error) || !('code' in error) || !['EPERM', 'EBUSY', 'EACCES'].includes(String(error.code)) || attempt === 5) throw error
         await new Promise(resolve => setTimeout(resolve, 25 * 2 ** attempt))

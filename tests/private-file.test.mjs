@@ -1,9 +1,35 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import fs, { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { readPrivate, writePrivate } from '../dist/private-file.js'
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  test(`Windows update interrupted by ${signal} during rename backoff preserves the configuration`, async t => {
+    const root = await mkdtemp(join(tmpdir(), 'shodan-acl-'))
+    const target = join(root, 'config.json')
+    try {
+      await writePrivate(target, 'original')
+      t.mock.method(fs, 'rename', async () => {
+        throw Object.assign(new Error('Sharing violation'), { code: 'EBUSY' })
+      }, { times: 1 })
+      syncBuiltinESMExports()
+      t.mock.method(globalThis, 'setTimeout', callback => {
+        process.emit(signal)
+        callback()
+      })
+      await assert.rejects(writePrivate(target, 'replacement', { platform: 'win32', acl: () => {} }), { code: 'INTERRUPTED' })
+      assert.equal(await readFile(target, 'utf8'), 'original')
+      assert.deepEqual(await readdir(root), ['config.json'])
+    } finally {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+}
 
 test('Windows ACL boundary protects writes and verifies reads', async () => {
   const root = await mkdtemp(join(tmpdir(), 'shodan-acl-'))
