@@ -289,21 +289,26 @@ export async function investigate(plan: Investigation, origin: string | undefine
       remaining -= segment.rows.length
     }
     if (!continuation && result.more) continuation = { page: currentPage + 1, offset: 0 }
-    const details: z.output<typeof host>[] = []
+    const details: (z.output<typeof host> | { ip_str: string; status: 'not-indexed' })[] = []
     let detailsComplete = true
     let remainingDetails: string[] = []
     if (flags.has('--details')) {
       const ips = [...new Set(records.filter(record => record.type === 'A' || record.type === 'AAAA').map(record => record.value).filter(address => isIP(address) !== 0))]
       for (const ip of ips) {
         if (!canDispatch(false)) { detailsComplete = false; remainingDetails = ips.slice(details.length); break }
-        const detail = parse(host, await dispatch(`/shodan/host/${encodeURIComponent(ip)}`, {}, false))
-        if (!sameAddress(detail.ip_str, ip)) throw new ToolError('INVALID_RESPONSE', 'Host response does not match the selected address', 'Retry the selected address')
-        details.push(detail)
+        try {
+          const detail = parse(host, await dispatch(`/shodan/host/${encodeURIComponent(ip)}`, {}, false))
+          if (!sameAddress(detail.ip_str, ip)) throw new ToolError('INVALID_RESPONSE', 'Host response does not match the selected address', 'Retry the selected address')
+          details.push(detail)
+        } catch (error) {
+          if (!(error instanceof ToolError) || error.code !== 'NOT_FOUND') throw error
+          details.push({ ip_str: ip, status: 'not-indexed' })
+        }
       }
     }
     const saved = await save(plan, records, key ?? '\u0000')
     const savedHosts = flags.has('--save') && flags.has('--details')
-      ? await save(plan, details.flatMap(detail => detail.data.filter(row => !Object.hasOwn(row, 'placeholder'))), key ?? '\u0000', `${argument ?? 'results'}-hosts.json.gz`)
+      ? await save(plan, details.flatMap(detail => 'data' in detail ? detail.data.filter(row => !Object.hasOwn(row, 'placeholder')) : []), key ?? '\u0000', `${argument ?? 'results'}-hosts.json.gz`)
       : undefined
     const complete = page === 1 && offset === 0 && !continuation && detailsComplete
     const envelope = Object.fromEntries(Object.entries(result).filter(([field]) => field !== 'data'))

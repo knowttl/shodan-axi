@@ -191,6 +191,39 @@ test('terminal domain reads distinguish exhaustion from budget termination', { t
   })
 })
 
+test('domain enrichment preserves DNS records when hosts are not indexed', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, calls, run, setMode }) => {
+    const grant = ['--allow-operation', 'OP-040', '--query-credit-budget', '1']
+    const missing = [{ ip_str: '192.0.2.8', status: 'not-indexed' }, { ip_str: '2001:db8::8', status: 'not-indexed' }]
+    setMode('domain-unindexed')
+    const limited = await run(['domain', 'example.test', '--details', '--max-requests', '2', ...grant])
+    assert.equal(limited.code, 0)
+    assert.equal(limited.body.records.length, 3)
+    assert.deepEqual(limited.body.details, missing.slice(0, 1))
+    assert.deepEqual(limited.body.remainingDetails, ['2001:db8::8', '192.0.2.7'])
+    assert.equal(limited.body.stopReason, 'request-limit')
+    const before = calls.length
+    const result = await run(['domain', 'example.test', '--details', '--save', '--max-requests', '4', ...grant])
+    assert.equal(result.code, 0)
+    assert.deepEqual(result.body.records, [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }])
+    assert.deepEqual(result.body.details.slice(0, 2), missing)
+    assert.equal(result.body.details[2].ip_str, '192.0.2.7')
+    assert.equal(result.body.complete, true)
+    assert.equal(result.body.stopReason, 'complete')
+    assert.equal(result.body.continuation, undefined)
+    assert.equal(result.body.remainingDetails, undefined)
+    assert.equal(calls.length, before + 4)
+    const records = gunzipSync(await readFile(join(root, 'example.test.json.gz'))).toString().trim().split('\n').map(row => JSON.parse(row))
+    assert.deepEqual(records, result.body.records)
+    const banners = gunzipSync(await readFile(join(root, 'example.test-hosts.json.gz'))).toString().trim().split('\n').map(row => JSON.parse(row))
+    assert.equal(banners.length, 3)
+    assert.deepEqual(banners.map(row => row.ip_str), ['192.0.2.7', '192.0.2.7', '192.0.2.7'])
+    assert.equal((await run(['host', '192.0.2.8'])).body.error, 'NOT_FOUND')
+    setMode('domain-enrichment-denied')
+    assert.equal((await run(['domain', 'example.test', '--details', '--max-requests', '4', ...grant])).body.error, 'UPSTREAM_ERROR')
+  })
+})
+
 test('domain enrichment and saves cover only selected records', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, calls, run, setMode }) => {
     const domain = await run(['domain', 'example.test', '--type', 'A', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])

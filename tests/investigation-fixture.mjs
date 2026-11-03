@@ -25,6 +25,11 @@ export async function withInvestigation(check) {
       if (mode === 'malformed') { response.end('{broken'); return }
       if (mode === 'timeout') { request.socket.destroy(); return }
       if (mode === 'bad-port') { response.end('[22,"443"]'); return }
+      if (['/shodan/host/192.0.2.8', '/shodan/host/2001%3Adb8%3A%3A8'].includes(url.pathname)) {
+        response.writeHead(mode === 'domain-enrichment-denied' ? 403 : 404)
+        response.end('{"error":"host unavailable"}')
+        return
+      }
       const page = url.searchParams.get('page')
       const values = {
         '/shodan/host/192.0.2.7': { ip_str: '192.0.2.7', ports: [443], ...(url.searchParams.get('minify') === 'true' || mode === 'missing-banners' ? {} : { data: mode === 'placeholder' ? [...banners, { ...banner('tcp', '2026-01-04'), placeholder: true }] : banners }) },
@@ -38,6 +43,9 @@ export async function withInvestigation(check) {
         '/tools/myip': request.headers['x-test-family'] === 'ipv6' ? '2001:db8::7' : '192.0.2.7',
         '/192.0.2.7': { ip: '192.0.2.7', ports: [443], cpes: [], hostnames: [], tags: [], vulns: ['CVE-2020-0001'] },
         '/labs/honeyscore/192.0.2.7': 0.25, '/shodan/services': { 443: 'https' },
+      }
+      if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
+        domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
       }
       response.setHeader('content-type', 'application/json')
       response.end(JSON.stringify(values[url.pathname]))
