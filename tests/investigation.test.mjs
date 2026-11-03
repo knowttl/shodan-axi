@@ -157,6 +157,40 @@ test('search projects nested fields and exposes text truncation and display opti
   })
 })
 
+test('terminal domain reads distinguish exhaustion from budget termination', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ calls, run, setMode }) => {
+    const grant = ['--allow-operation', 'OP-040', '--query-credit-budget', '1']
+    setMode('domain-terminal')
+    for (const [page, offset, count, reason] of [['2', '0', 2, 'exhausted'], ['1', '1', 1, 'exhausted'], ['2', '1', 1, 'exhausted'], ['1', '2', 0, 'exhausted'], ['1', '0', 2, 'complete']]) {
+      const before = calls.length
+      const result = await run(['domain', 'example.test', '--page', page, '--offset', offset, ...grant])
+      assert.equal(result.code, 0)
+      assert.equal(result.body.count, count)
+      assert.equal(result.body.stopReason, reason)
+      assert.equal(result.body.complete, reason === 'complete')
+      assert.equal(result.body.continuation, undefined)
+      assert.equal(result.body.nextPage, undefined)
+      assert.equal(calls.length, before + 1)
+    }
+    const clipped = await run(['domain', 'example.test', '--page', '2', '--limit', '1', ...grant])
+    assert.equal(clipped.body.stopReason, 'limit')
+    assert.deepEqual(clipped.body.continuation, { page: 2, offset: 1 })
+    const unfinished = await run(['domain', 'example.test', '--page', '2', '--details', ...grant])
+    assert.equal(unfinished.body.stopReason, 'request-limit')
+    assert.deepEqual(unfinished.body.remainingDetails, ['192.0.2.7'])
+    const enriched = await run(['domain', 'example.test', '--page', '2', '--details', '--save', '--max-requests', '2', ...grant])
+    assert.equal(enriched.body.stopReason, 'exhausted')
+    assert.equal(enriched.body.details.length, 1)
+    assert.equal(enriched.body.complete, false)
+    assert.equal(enriched.body.continuation, undefined)
+    setMode('domain-empty-terminal')
+    const empty = await run(['domain', 'example.test', '--page', '2', ...grant])
+    assert.equal(empty.body.stopReason, 'exhausted')
+    assert.deepEqual(empty.body.records, [])
+    assert.equal(empty.body.continuation, undefined)
+  })
+})
+
 test('domain enrichment and saves cover only selected records', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, calls, run, setMode }) => {
     const domain = await run(['domain', 'example.test', '--type', 'A', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])

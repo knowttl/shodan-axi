@@ -308,7 +308,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
     const complete = page === 1 && offset === 0 && !continuation && detailsComplete
     const envelope = Object.fromEntries(Object.entries(result).filter(([field]) => field !== 'data'))
     return { ...envelope, records, count: records.length, page, pages, requests, queryCreditEstimate: credits, costKnowledge: 'estimated',
-      complete, stopReason: complete ? 'complete' : !detailsComplete ? 'request-limit' : records.length < rows.length ? 'limit' : !canDispatch(true) ? stopReason() : 'page-limit',
+      complete, stopReason: complete ? 'complete' : !detailsComplete ? 'request-limit' : !continuation ? 'exhausted' : records.length < rows.length ? 'limit' : !canDispatch(true) ? stopReason() : 'page-limit',
       details, ...(savedHosts ? { savedHosts } : {}), ...(remainingDetails.length ? { remainingDetails } : {}), ...(continuation ? { continuation } : {}),
       ...(result.more && continuation?.offset === 0 ? { nextPage: continuation.page } : {}), ...(saved ? { saved } : {}) }
   }
