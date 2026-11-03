@@ -1,5 +1,5 @@
 import { constants } from 'node:fs'
-import { chmod, lstat, mkdir, open, realpath, rename, rm } from 'node:fs/promises'
+import { lstat, mkdir, open, realpath, rename, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { ToolError } from './errors.js'
@@ -46,16 +46,15 @@ export async function writePrivate(path: string, content: string, options: Optio
   await direct(directory, platform)
   const parent = await lstat(directory)
   if (!parent.isDirectory()) insecure()
-  if (platform === 'win32') {
+  if (platform === 'win32' && first) {
     let current = directory
     for (;;) {
       try { acl(current, 'restrict', true) } catch { insecure() }
-      if (!first || current.toLowerCase() === first.toLowerCase()) break
+      if (current.toLowerCase() === first.toLowerCase()) break
       current = dirname(current)
     }
-  } else {
+  } else if (platform !== 'win32') {
     if (parent.uid !== process.getuid?.() || (parent.mode & 0o022) !== 0) insecure()
-    await chmod(directory, 0o700)
   }
   try { await readPrivate(path, false, options) } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error

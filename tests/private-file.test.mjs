@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import fs, { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import fs, { chmod, lstat, mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -33,18 +33,54 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 test('Windows ACL boundary protects writes and verifies reads', async () => {
   const root = await mkdtemp(join(tmpdir(), 'shodan-acl-'))
-  const target = join(root, 'config.json')
+  const created = join(root, 'private')
+  const directory = join(created, 'nested')
+  const target = join(directory, 'config.json')
   const actions = []
   const options = { platform: 'win32', acl: (path, action, directory) => { actions.push({ path, action, directory }) } }
   try {
     await writePrivate(target, 'value', options)
     assert.equal(await readFile(target, 'utf8'), 'value')
     assert.equal(await readPrivate(target, false, options), 'value')
-    assert.equal(actions[0].action, 'restrict')
-    assert.equal(actions[0].directory, true)
-    assert.equal(actions[1].action, 'restrict')
-    assert.equal(actions[1].directory, false)
+    assert.deepEqual(actions.filter(item => item.directory), [
+      { path: directory, action: 'restrict', directory: true },
+      { path: created, action: 'restrict', directory: true },
+    ])
+    assert.equal(actions[2].action, 'restrict')
+    assert.equal(actions[2].directory, false)
     assert.deepEqual(actions.at(-1), { path: target, action: 'verify', directory: false })
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
+
+for (const platform of ['linux', 'win32']) {
+  test(`${platform} writes preserve an existing 0755 parent`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'shodan-parent-'))
+    const target = join(root, 'config.json')
+    const actions = []
+    const options = { platform, acl: (path, action, directory) => { actions.push({ path, action, directory }) } }
+    try {
+      await chmod(root, 0o755)
+      await writePrivate(target, 'original', options)
+      assert.equal((await lstat(root)).mode & 0o777, 0o755)
+      await writePrivate(target, 'replacement', options)
+      assert.equal((await lstat(root)).mode & 0o777, 0o755)
+      assert.equal(await readPrivate(target, true, options), 'replacement')
+      assert.deepEqual(actions.filter(item => item.directory), [])
+    } finally { await rm(root, { recursive: true, force: true }) }
+  })
+}
+
+test('Unix writes create private directories without changing existing ancestors', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'shodan-parent-'))
+  const created = join(root, 'private')
+  const directory = join(created, 'nested')
+  try {
+    await chmod(root, 0o755)
+    await writePrivate(join(directory, 'config.json'), 'value')
+    assert.equal((await lstat(root)).mode & 0o777, 0o755)
+    assert.equal((await lstat(created)).mode & 0o777, 0o700)
+    assert.equal((await lstat(directory)).mode & 0o777, 0o700)
+    assert.equal(await readPrivate(join(directory, 'config.json'), true), 'value')
   } finally { await rm(root, { recursive: true, force: true }) }
 })
 
