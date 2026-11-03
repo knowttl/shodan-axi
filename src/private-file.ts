@@ -17,14 +17,14 @@ async function direct(path: string, platform: NodeJS.Platform): Promise<void> {
   if (platform === 'win32' ? actual.toLowerCase() !== resolve(path).toLowerCase() : actual !== resolve(path)) insecure()
 }
 
-export async function readPrivate(path: string, secret: boolean, verifyAcl = false, options: Options = {}): Promise<string> {
+export async function readPrivate(path: string, secret: boolean, options: Options = {}): Promise<string> {
   const platform = options.platform ?? process.platform
   const acl = options.acl ?? windowsAcl
   await direct(path, platform)
   const before = await lstat(path)
   if (!before.isFile()) insecure()
   if (platform === 'win32') {
-    try { acl(path, verifyAcl ? 'verify' : 'check', false) } catch { insecure() }
+    try { acl(path, 'verify', false) } catch { insecure() }
   } else if (before.uid !== process.getuid?.() || (before.mode & (secret ? 0o077 : 0o022)) !== 0) insecure()
   const file = await open(path, constants.O_RDONLY | (platform === 'win32' ? 0 : constants.O_NOFOLLOW))
   try {
@@ -57,7 +57,7 @@ export async function writePrivate(path: string, content: string, options: Optio
     if (parent.uid !== process.getuid?.() || (parent.mode & 0o022) !== 0) insecure()
     await chmod(directory, 0o700)
   }
-  try { await readPrivate(path, false, false, options) } catch (error) {
+  try { await readPrivate(path, false, options) } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
   }
   const temporary = `${path}.${randomUUID()}.tmp`

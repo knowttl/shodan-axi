@@ -75,12 +75,12 @@ export async function main(args: string[]): Promise<void> {
     }
     if (words[0] === 'init') throw new ToolError('INVALID_INPUT', 'Inline API keys are not accepted', 'Use init --env <variable> or --file <absolute-path>')
     if (!['', 'info', 'account profile', 'doctor', 'auth status'].includes(command)) throw new ToolError('INVALID_INPUT', 'Unknown command', usage)
-    const selected = await select(path, option('--profile'), command === 'auth status' || command === 'doctor')
+    const selected = await select(path, option('--profile'))
     if (command === 'auth status') {
-      if (selected.profile.auth === 'api-key' && 'file' in selected.profile.apiKey) await readPrivate(selected.profile.apiKey.file, true, true)
+      if (selected.profile.auth === 'api-key' && 'file' in selected.profile.apiKey) await readPrivate(selected.profile.apiKey.file, true)
       output({ profile: selected.name, source: selected.source, origin: selected.profile.origin, auth: selected.profile.auth, ...(selected.profile.auth === 'api-key' ? { apiKey: selected.profile.apiKey } : {}) }, json); return
     }
-    key = await secret(selected, command === 'doctor')
+    key = await secret(selected)
     const result = await read(selected.profile.origin, command === 'account profile' ? '/account/profile' : '/api-info', key)
     if (!command) {
       const executable = process.argv[1] ?? 'shodan-axi'

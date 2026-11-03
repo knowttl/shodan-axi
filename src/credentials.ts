@@ -29,9 +29,9 @@ export function configPath(option?: string): string {
   return path
 }
 
-export async function readConfig(path: string, verifyAcl = false): Promise<Envelope> {
+export async function readConfig(path: string): Promise<Envelope> {
   let content: string
-  try { content = await readPrivate(path, false, verifyAcl) } catch (error) {
+  try { content = await readPrivate(path, false) } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return { version: 1, profiles: {} }
     throw error
   }
@@ -42,7 +42,7 @@ export async function readConfig(path: string, verifyAcl = false): Promise<Envel
   return parsed.data
 }
 
-export async function select(path: string, requested?: string, verifyAcl = false): Promise<Selection> {
+export async function select(path: string, requested?: string): Promise<Selection> {
   const selected = requested ?? process.env.SHODAN_AXI_PROFILE
   if (selected && !name.safeParse(selected).success) invalid()
   if (!selected) {
@@ -57,7 +57,7 @@ export async function select(path: string, requested?: string, verifyAcl = false
       return { name: 'environment', source: 'environment', profile: result.data }
     }
   }
-  const config = await readConfig(path, verifyAcl)
+  const config = await readConfig(path)
   const names = Object.keys(config.profiles)
   const chosen = selected ?? config.defaultProfile ?? (names.length === 1 ? names[0] : undefined)
   if (!chosen) throw new ToolError(names.length ? 'PROFILE_AMBIGUOUS' : 'AUTH_REQUIRED', 'No profile selected', 'Configure a profile with an API key reference')
@@ -66,19 +66,19 @@ export async function select(path: string, requested?: string, verifyAcl = false
   return { name: chosen, source: 'file', profile: value }
 }
 
-export async function secret(selection: Selection, verifyAcl = false): Promise<string> {
+export async function secret(selection: Selection): Promise<string> {
   if (selection.profile.auth !== 'api-key') throw new ToolError('AUTH_REQUIRED', 'This command requires an API key', 'Select an API-key profile')
   const reference = selection.profile.apiKey
-  const value = 'env' in reference ? process.env[reference.env] : (await readPrivate(reference.file, true, verifyAcl)).replace(/^\uFEFF/, '').trimEnd()
+  const value = 'env' in reference ? process.env[reference.env] : (await readPrivate(reference.file, true)).replace(/^\uFEFF/, '').trimEnd()
   if (!value) throw new ToolError('AUTH_REQUIRED', 'The API key reference is empty', 'Set the referenced environment variable or protected file')
   return value
 }
 
 export async function putProfile(path: string, profileName: string, reference: unknown, makeDefault = false): Promise<void> {
   if (!name.safeParse(profileName).success) invalid()
-  const parsed = profile.safeParse({ auth: 'api-key', apiKey: reference })
-  if (!parsed.success) invalid()
   const config = await readConfig(path)
+  const parsed = profile.safeParse({ ...config.profiles[profileName], auth: 'api-key', apiKey: reference })
+  if (!parsed.success) invalid()
   config.profiles[profileName] = parsed.data
   if (makeDefault || !config.defaultProfile) config.defaultProfile = profileName
   await writePrivate(path, `${JSON.stringify(config, null, 2)}\n`)
