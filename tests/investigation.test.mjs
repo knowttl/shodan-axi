@@ -310,6 +310,26 @@ test('elapsed timeout cancels responses despite continued chunks', { timeout: 30
   })
 })
 
+test('streaming HTTP errors close their transport before rejecting', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ calls, run, setMode }) => {
+    for (const [mode, error] of [['trickle-404', 'NOT_FOUND'], ['trickle-429', 'RATE_LIMITED'], ['trickle-503', 'UPSTREAM_ERROR']]) {
+      setMode(mode)
+      const before = calls.length
+      const result = await run(['ports', '--timeout', '500'])
+      assert.notEqual(result.code, 0)
+      assert.equal(result.body.error, error)
+      assert.equal(calls.length, before + 1)
+      assert.equal(await calls.at(-1).responseClosed, true)
+    }
+    setMode('trickle-enrichment')
+    const result = await run(['domain', 'example.test', '--details', '--max-requests', '2', '--timeout', '1000', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])
+    assert.equal(result.code, 0)
+    assert.deepEqual(result.body.records, [{ type: 'A', value: '192.0.2.7' }])
+    assert.deepEqual(result.body.details, [{ ip_str: '192.0.2.7', status: 'not-indexed' }])
+    assert.equal(await calls.at(-1).responseClosed, true)
+  })
+})
+
 test('unknown-cost and failing requests do not bypass budgets or retry', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ calls, run, setMode }) => {
     const before = calls.length

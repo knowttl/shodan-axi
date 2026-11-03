@@ -13,7 +13,8 @@ export async function requestJson(origin: string, path: string, key: string | un
   const bytes = await new Promise<Buffer>((resolve, reject) => {
     const req = request(url, { method: 'GET', ...(family ? { family } : {}) }, response => {
       if (response.statusCode !== 200) {
-        response.resume()
+        response.destroy()
+        req.destroy()
         const code = response.statusCode === 404 ? 'NOT_FOUND' : response.statusCode === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR'
         reject(new ToolError(code, `Request failed with HTTP ${response.statusCode ?? 0}`, 'Check access and retry later'))
         return

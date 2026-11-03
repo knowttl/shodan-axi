@@ -48,7 +48,11 @@ export async function withInvestigation(check) {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
       }
       response.setHeader('content-type', 'application/json')
-      if (mode === 'trickle') {
+      const errorStatus = { 'trickle-404': 404, 'trickle-429': 429, 'trickle-503': 503 }[mode]
+        ?? (mode === 'trickle-enrichment' && url.pathname.startsWith('/shodan/host/') ? 404 : undefined)
+      if (mode === 'trickle' || errorStatus !== undefined) {
+        calls.at(-1).responseClosed = new Promise(resolve => { response.on('close', () => { resolve(!response.writableFinished) }) })
+        response.writeHead(errorStatus ?? 200)
         response.write(' ')
         let chunks = 0
         const timer = setInterval(() => {
