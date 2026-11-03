@@ -377,6 +377,179 @@
       "arguments": []
     },
     {
+      "command": "query list",
+      "operation": "OP-031",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--page",
+        "--sort",
+        "--order"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "query search",
+      "operation": "OP-032",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--page"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "query tags",
+      "operation": "OP-033",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--size"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "trends",
+      "operation": "OP-054",
+      "effect": "read",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--accept-unknown-cost",
+        "--facets",
+        "--save",
+        "--filename"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "trends filters",
+      "operation": "OP-055",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "trends facets",
+      "operation": "OP-056",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "exploits search",
+      "operation": "OP-057",
+      "effect": "read",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--accept-unknown-cost",
+        "--page",
+        "--facets",
+        "--full"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "exploits count",
+      "operation": "OP-058",
+      "effect": "read",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--accept-unknown-cost",
+        "--facets"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
       "command": "myip --ipv6",
       "operation": "OP-072",
       "effect": "read",

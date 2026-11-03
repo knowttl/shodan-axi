@@ -67,6 +67,9 @@ export function planInvestigation(words: string[], flags: Flags): Investigation 
   if (facets !== undefined && !facets.split(',').every(facet => /^[A-Za-z0-9_.-]+(?::[1-9][0-9]*)?$/.test(facet))) fail('Invalid facet selection')
   const recordType = value(flags, '--type')
   if (recordType !== undefined && !/^[A-Za-z0-9-]+$/.test(recordType)) fail('Invalid DNS record type')
+  if (value(flags, '--sort') !== undefined && !['votes', 'timestamp'].includes(value(flags, '--sort') ?? '')) fail('Invalid sort')
+  if (value(flags, '--order') !== undefined && !['asc', 'desc'].includes(value(flags, '--order') ?? '')) fail('Invalid order')
+  if (!numberOption(flags, '--size', 10, 1000)) fail('Size must be greater than zero')
   if (!numberOption(flags, '--page', 1, 1000000)) fail('Page must be greater than zero')
   numberOption(flags, '--offset', 0, 1000000)
   if (value(flags, '--limit') !== '-1' && !numberOption(flags, '--limit', 100, 1000)) fail('Limit must be greater than zero')
@@ -148,18 +151,21 @@ export async function investigate(plan: Investigation, origin: string | undefine
   const limit = value(flags, '--limit') === '-1' ? Infinity : numberOption(flags, '--limit', operation.command === 'stats' ? 10 : 100, 1000)
   if (!page || !limit) fail('Page and limit must be greater than zero')
   const query: Record<string, string> = {}
-  if (argument !== undefined && ['OP-002', 'OP-003', 'OP-006'].includes(operation.id)) query.query = argument
+  if (argument !== undefined && ['OP-002', 'OP-003', 'OP-006', 'OP-032', 'OP-054', 'OP-057', 'OP-058'].includes(operation.id)) query.query = argument
   if (operation.id === 'OP-041' && argument) query.hostnames = argument
   if (operation.id === 'OP-042' && argument) query.ips = argument
-  for (const name of ['history', 'minify', 'type', 'facets']) {
+  for (const name of ['history', 'minify', 'type', 'facets', 'sort', 'order', 'size']) {
     const item = flags.get(`--${name}`)
     if (item !== undefined) query[name] = String(item)
   }
   if (operation.command === 'stats' && query.facets === undefined) query.facets = 'country,org'
   if (operation.id === 'OP-003' || operation.id === 'OP-040') query.page = String(page)
+  if (['OP-031', 'OP-032', 'OP-057'].includes(operation.id)) query.page = String(page)
   if (operation.id === 'OP-040' && query.history === undefined) query.history = 'false'
   const path = operation.path.replace(/\{(?:ip|domain)\}/, encodeURIComponent(argument ?? ''))
-  const service = operation.id === 'OP-059' ? 'https://internetdb.shodan.io' : operation.id === 'OP-072' ? 'https://apiv6.shodan.io' : origin
+  const service = operation.id === 'OP-059' ? 'https://internetdb.shodan.io' : operation.id === 'OP-072' ? 'https://apiv6.shodan.io'
+    : ['OP-054', 'OP-055', 'OP-056'].includes(operation.id) ? 'https://trends.shodan.io'
+      : ['OP-057', 'OP-058'].includes(operation.id) ? 'https://exploits.shodan.io' : origin
   if (!service) throw new ToolError('AUTH_REQUIRED', 'A credentialed profile is required', 'Configure a profile with an API key reference')
   let requests = 0
   let credits = 0
@@ -173,11 +179,50 @@ export async function investigate(plan: Investigation, origin: string | undefine
     try { return await requestJson(service, requestPath, operation.id === 'OP-059' ? undefined : key, parameters, 10 * 1024 * 1024,
       Math.max(1, deadline - Date.now()), operation.id === 'OP-044' || operation.id === 'OP-072', operation.id === 'OP-072' ? 6 : undefined) }
     catch (error) {
+      if (['OP-031', 'OP-032', 'OP-033', 'OP-054', 'OP-055', 'OP-056', 'OP-057', 'OP-058'].includes(operation.id) && error instanceof ToolError) {
+        if (/HTTP 3\d\d/.test(error.message)) throw new ToolError('REDIRECT_REFUSED', 'The service redirected the request', 'Check the service origin before retrying')
+        if (/HTTP 40[13]/.test(error.message)) throw new ToolError('ACCESS_DENIED', 'Access to this service was denied', 'Check this service entitlement')
+      }
       if (cost && error instanceof ToolError && error.code === 'UPSTREAM_ERROR') throw new ToolError(error.code, `${error.message}; credit use is uncertain`, 'Check the service and remaining credit before retrying')
       throw error
     }
   }
   const raw = await dispatch(path, query, operation.cost !== 'none')
+  if (['OP-031', 'OP-032', 'OP-033'].includes(operation.id)) {
+    const item = operation.id === 'OP-033' ? z.object({ value: z.string(), count: z.number().int().nonnegative() }).passthrough()
+      : z.object({ title: z.string(), query: z.string() }).passthrough()
+    const result = parse(z.object({ matches: z.array(item), total: z.number().int().nonnegative() }).passthrough(), raw)
+    const complete = operation.id === 'OP-033' || (page === 1 && result.matches.length >= result.total)
+    return { items: result.matches, count: result.matches.length, total: result.total, ...(operation.id === 'OP-033' ? {} : { page }), complete }
+  }
+  if (operation.id === 'OP-055' || operation.id === 'OP-056') return { items: parse(z.array(z.string()), raw), sourceFamily: 'trends' }
+  if (operation.id === 'OP-054') {
+    const month = z.object({ month: z.string().regex(/^\d{4}-\d{2}$/), count: z.number().int().nonnegative() }).passthrough()
+    const bucket = z.object({ key: z.string().regex(/^\d{4}-\d{2}$/), values: z.array(object) }).passthrough()
+    const result = parse(z.object({ total: z.number().int().nonnegative(), matches: z.array(month), facets: z.record(z.string(), z.array(bucket)).default({}) }).passthrough(), raw)
+    const months = result.matches.map(row => ({ ...row, ...Object.fromEntries(Object.entries(result.facets).flatMap(([name, buckets]) => {
+      const match = buckets.find(bucket => bucket.key === row.month)
+      return match ? [[name, match.values]] : []
+    })) }))
+    const savedMonths = result.matches.map(row => ({ ...row, ...(Object.keys(result.facets).length ? { facets: Object.fromEntries(Object.entries(result.facets).flatMap(([name, buckets]) => {
+      const match = buckets.find(bucket => bucket.key === row.month)
+      return match ? [[name, match.values]] : []
+    })) } : {}) }))
+    const destination = flags.has('--save') ? `${(argument ?? 'results').replaceAll(' ', '-')}-trends.json.gz` : undefined
+    const saved = await save(plan, savedMonths, key ?? '\u0000', destination)
+    return { total: result.total, months, sourceFamily: 'trends', ...(saved ? { saved } : {}) }
+  }
+  if (operation.id === 'OP-057' || operation.id === 'OP-058') {
+    const result = parse(z.object({ total: z.number().int().nonnegative(), facets: object.optional(), matches: z.array(object).optional() }).passthrough(), raw)
+    if (operation.id === 'OP-058') return { total: result.total, facets: result.facets ?? {}, sourceFamily: 'exploits' }
+    if (!result.matches) throw new ToolError('INVALID_RESPONSE', 'The service returned an invalid response', 'Retry later or inspect service status')
+    const truncations: { row: number; field: string; length: number }[] = []
+    const items = result.matches.map((row, index) => Object.fromEntries(Object.entries(row).map(([field, item]) => {
+      if (!flags.has('--full') && typeof item === 'string' && item.length > 500) { truncations.push({ row: index, field, length: item.length }); return [field, `${item.slice(0, 500)}...`] }
+      return [field, item]
+    })))
+    return { items, count: items.length, total: result.total, page, facets: result.facets ?? {}, sourceFamily: 'exploits', ...(truncations.length ? { truncations, help: 'Use --full to include complete text within the byte limit' } : {}) }
+  }
   if (operation.id === 'OP-001') {
     const result = parse(query.minify === 'true' ? host.extend({ data: z.array(banner).default([]) }) : host, raw)
     if (!sameAddress(result.ip_str, argument)) throw new ToolError('INVALID_RESPONSE', 'Host response does not match the selected address', 'Retry the selected address')

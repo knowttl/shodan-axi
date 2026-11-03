@@ -22,7 +22,7 @@ async function files(directory, prefix = '') {
   return result.sort()
 }
 
-test('local Artium uses the packed account tool and refuses unapproved calls', { timeout: 30000 }, async () => {
+test('local Artium uses the packed account tool and refuses unapproved calls', { timeout: 45000 }, async () => {
   const fixtureRoot = process.env.ARTIUM_FIXTURE_ROOT
   const manifestPath = process.env.ARTIUM_FIXTURE_MANIFEST
   assert.ok(fixtureRoot && isAbsolute(fixtureRoot) && manifestPath && isAbsolute(manifestPath), 'Set absolute Artium fixture root and manifest paths')
@@ -79,13 +79,17 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         '/tools/httpheaders': { 'User-Agent': 'synthetic' }, '/tools/myip': request.headers['x-test-family'] === 'ipv6' ? '2001:db8::7' : '192.0.2.7',
         '/192.0.2.7': { ip: '192.0.2.7', ports: [443], cpes: [], hostnames: [], tags: [], vulns: ['CVE-2020-0001'] },
         '/labs/honeyscore/192.0.2.7': 0.25, '/shodan/services': { 443: 'https' },
+        '/shodan/query': { total: 11, matches: [{ title: 'Synthetic TLS', query: 'port:443' }] },
+        '/shodan/query/search': { total: 1, matches: [{ title: 'Synthetic TLS', query: 'port:443' }] },
+        '/shodan/query/tags': { total: 1, matches: [{ value: 'test', count: 3 }] },
+        '/api/v1/search/filters': ['all', 'has_ipv6'], '/api/v1/search/facets': ['country', 'asn'],
       }
       response.end(JSON.stringify(bodies[url.pathname]))
     })
     await new Promise(resolve => fake.listen(0, '127.0.0.1', resolve))
     const port = fake.address().port
     const bootstrap = join(temporary, 'route.mjs')
-    await writeFile(bootstrap, `import https from 'node:https';\nimport { syncBuiltinESMExports } from 'node:module';\nconst original = https.request;\nhttps.request = function (url, ...args) { if (!(url instanceof URL) || !['https://api.shodan.io', 'https://internetdb.shodan.io', 'https://apiv6.shodan.io'].includes(url.origin)) throw new Error('Unexpected destination'); const target = new URL(url); if (url.origin === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } target.hostname = '127.0.0.1'; target.port = ${port}; args[0].servername = 'localhost'; return original.call(this, target, ...args); };\nsyncBuiltinESMExports();\nawait import(${JSON.stringify(pathToFileURL(manifest.toolExecutable).href)});\n`)
+    await writeFile(bootstrap, `import https from 'node:https';\nimport { syncBuiltinESMExports } from 'node:module';\nconst original = https.request;\nhttps.request = function (url, ...args) { if (!(url instanceof URL) || !['https://api.shodan.io', 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io'].includes(url.origin)) throw new Error('Unexpected destination'); const target = new URL(url); if (url.origin === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } target.hostname = '127.0.0.1'; target.port = ${port}; args[0].servername = 'localhost'; return original.call(this, target, ...args); };\nsyncBuiltinESMExports();\nawait import(${JSON.stringify(pathToFileURL(manifest.toolExecutable).href)});\n`)
 
     process.env.NODE_ENV = 'test'
     const [{ openStore, createCredentialStore }, { EnvironmentKeyProvider }, { EmbeddedSecretSource }, { createShodanAdapter },
@@ -196,6 +200,20 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         assert.notEqual(denied.code, 0)
         assert.equal(requests.length, beforeBlocked)
         assert.equal(credentialReads, beforeCredentialReads)
+      }
+      if (process.env.SHODAN_TEST_SLICE !== 'B2.1') {
+        assert.equal((await read(['query', 'list', '--page', '2', '--sort', 'votes', '--order', 'asc'])).items[0].title, 'Synthetic TLS')
+        assert.equal((await read(['query', 'search', 'Synthetic TLS'])).items[0].query, 'port:443')
+        assert.equal((await read(['query', 'tags', '--size', '1'])).items[0].count, 3)
+        assert.deepEqual((await read(['trends', 'filters'])).items, ['all', 'has_ipv6'])
+        assert.deepEqual((await read(['trends', 'facets'])).items, ['country', 'asn'])
+        const beforeHistory = requests.length
+        const beforeHistoryCredentials = credentialReads
+        for (const [command, operation] of [[['trends', 'port:443'], 'OP-054'], [['exploits', 'search', 'cve:2020-0001'], 'OP-057'], [['exploits', 'count', 'cve:2020-0001'], 'OP-058']]) {
+          assert.notEqual((await run([...command, '--allow-operation', operation, '--query-credit-budget', '1', '--accept-unknown-cost', '--max-requests', '1'])).code, 0)
+          assert.equal(requests.length, beforeHistory)
+          assert.equal(credentialReads, beforeHistoryCredentials)
+        }
       }
       store.replaceCredential('shodan-axi', { auth: 'none', origin: 'https://api.shodan.io' }, 1, 'synthetic-development-user', Date.now())
       const snapshot = await read(['internetdb', 'host', '192.0.2.7'])

@@ -19,5 +19,13 @@ export const operations = [
   { id: 'OP-059', command: 'internetdb host', path: '/{ip}', effect: 'read', cost: 'none', acceptance: 'AC-059', argument: 'ip' },
   { id: 'OP-064', command: 'honeyscore', path: '/labs/honeyscore/{ip}', effect: 'read', cost: 'unknown', acceptance: 'AC-064', argument: 'ip' },
   { id: 'OP-066', command: 'services', path: '/shodan/services', effect: 'read', cost: 'unknown', acceptance: 'AC-066' },
+  { id: 'OP-031', command: 'query list', path: '/shodan/query', effect: 'read', cost: 'none', acceptance: 'AC-031', flags: ['--page', '--sort', '--order'] },
+  { id: 'OP-032', command: 'query search', path: '/shodan/query/search', effect: 'read', cost: 'none', acceptance: 'AC-032', argument: 'query', flags: ['--page'] },
+  { id: 'OP-033', command: 'query tags', path: '/shodan/query/tags', effect: 'read', cost: 'none', acceptance: 'AC-033', flags: ['--size'] },
+  { id: 'OP-054', command: 'trends', path: '/api/v1/search', effect: 'read', cost: 'unknown', acceptance: 'AC-054', argument: 'query', flags: ['--facets', '--save', '--filename'] },
+  { id: 'OP-055', command: 'trends filters', path: '/api/v1/search/filters', effect: 'read', cost: 'none', acceptance: 'AC-055' },
+  { id: 'OP-056', command: 'trends facets', path: '/api/v1/search/facets', effect: 'read', cost: 'none', acceptance: 'AC-056' },
+  { id: 'OP-057', command: 'exploits search', path: '/api/search', effect: 'read', cost: 'unknown', acceptance: 'AC-057', argument: 'query', flags: ['--page', '--facets', '--full'] },
+  { id: 'OP-058', command: 'exploits count', path: '/api/count', effect: 'read', cost: 'unknown', acceptance: 'AC-058', argument: 'query', flags: ['--facets'] },
   { id: 'OP-072', command: 'myip --ipv6', path: '/tools/myip', effect: 'read', cost: 'none', acceptance: 'AC-072' },
 ] as const satisfies readonly ReadOperation[]
