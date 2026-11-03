@@ -1,0 +1,113 @@
+{
+  "commands": [
+    {
+      "command": "account profile",
+      "operation": "OP-039",
+      "effect": "read",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "info",
+      "operation": "OP-045",
+      "effect": "read",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "",
+      "operation": "OP-045",
+      "effect": "read",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "doctor",
+      "operation": "OP-045",
+      "effect": "read",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "auth status",
+      "effect": "read",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "profile list",
+      "effect": "read",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "config path",
+      "effect": "read",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "profile set",
+      "effect": "local",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--env",
+        "--file"
+      ],
+      "arguments": [
+        {
+          "name": "name"
+        }
+      ]
+    },
+    {
+      "command": "init",
+      "effect": "local",
+      "flags": [
+        "--json",
+        "--help",
+        "--config",
+        "--env",
+        "--file"
+      ],
+      "arguments": []
+    }
+  ]
+}

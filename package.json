@@ -1,0 +1,23 @@
+{
+  "name": "@knowttl/shodan-axi",
+  "version": "0.1.0",
+  "description": "Agent-facing Shodan account access",
+  "type": "module",
+  "license": "MIT",
+  "publishConfig": { "access": "public" },
+  "repository": { "type": "git", "url": "https://github.com/knowttl/shodan-axi.git" },
+  "bin": { "shodan-axi": "bin/shodan-axi.js" },
+  "files": ["bin/", "dist/", "axi-credential.schema.json", "command-inventory.json", "skills/"],
+  "engines": { "node": ">=24.14.0 <25", "npm": ">=11.9.0 <12" },
+  "packageManager": "npm@11.9.0",
+  "scripts": {
+    "build": "tsc",
+    "generate": "npm run build && node scripts/check-generated.mjs --write",
+    "check": "npm run build && eslint src && node scripts/check-generated.mjs && node --test tests/types.test.mjs tests/account.test.mjs",
+    "check:slice": "node scripts/check-slice.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "prepack": "npm run build && npm run check"
+  },
+  "dependencies": { "@toon-format/toon": "2.3.1", "zod": "4.1.12" },
+  "devDependencies": { "@eslint/js": "9.39.1", "@types/node": "24.10.0", "eslint": "9.39.1", "typescript": "5.9.3", "typescript-eslint": "8.46.4" }
+}
