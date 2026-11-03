@@ -224,6 +224,27 @@ test('domain enrichment preserves DNS records when hosts are not indexed', { tim
   })
 })
 
+test('domain enrichment reports timeout when its deadline expires between requests', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ calls, run, setMode }) => {
+    for (const [mode, path, requests, remaining] of [
+      ['domain-terminal', '/dns/domain/example.test', 1, ['192.0.2.7']],
+      ['domain-many', '/shodan/host/192.0.2.7', 2, ['192.0.2.8']],
+    ]) {
+      setMode(mode)
+      const before = calls.length
+      const result = await run(['domain', 'example.test', '--details', '--max-requests', '3', '--timeout', '1000', '--allow-operation', 'OP-040', '--query-credit-budget', '1'], { TEST_EXPIRE_ON_PATH: path })
+      assert.equal(result.code, 0)
+      assert.equal(result.body.count, 2)
+      assert.equal(result.body.stopReason, 'timeout')
+      assert.equal(result.body.complete, false)
+      assert.equal(result.body.requests, requests)
+      assert.equal(result.body.details.length, requests - 1)
+      assert.deepEqual(result.body.remainingDetails, remaining)
+      assert.equal(calls.length, before + requests)
+    }
+  })
+})
+
 test('domain enrichment and saves cover only selected records', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, calls, run, setMode }) => {
     const domain = await run(['domain', 'example.test', '--type', 'A', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])
