@@ -8,7 +8,7 @@ import { readPrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { read } from './vendor.js'
 
-const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, config path'
+const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services'
 const help: Record<string, string> = {
   '': usage,
   info: 'info [--profile <name>] [--config <absolute-path>] [--json] - inspect plan and credits',
