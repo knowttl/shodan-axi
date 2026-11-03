@@ -1,0 +1,13 @@
+no_ci: true
+auto_fix:
+  review: 2
+  test: 2
+review:
+  path_instructions:
+    - path: "**"
+      instructions: |
+        Report defects that a user or caller hits during the change's intended use with ordinary input and timing: wrong results, crashes, broken or missing flows, regressions, data loss, and changed behaviour that no test would catch breaking.
+        Do not report concurrency or crash windows, clock or platform differences, or hardening for situations the change does not create, unless the change targets them.
+        Do not report style, naming or wording.
+        Report each root cause once.
+        Use error or warning only for a defect with a concrete failing sequence under ordinary use or at a credential or untrusted-input boundary; report anything else worth knowing as info.
