@@ -21,7 +21,9 @@ Unknown-cost reads also require `--accept-unknown-cost` and an explicit request 
 Hosted use admits free reads only; chargeable or unknown-cost reads and saved files are available through the native CLI.
 `internetdb host` uses no API key; `myip --ipv6` requires an IPv6 transport and never falls back to IPv4.
 Honeyscore and services remain source-only and unverified.
-Trends and Exploits access and redirect behavior remain unverified; their historical and exploit searches require explicit unknown-cost acceptance.
+Trends and Exploits access and redirect behavior remain unverified against live services; `trends <query>`, `exploits search` and `exploits count` are unknown-cost reads.
+For native Trends exports, choose `--save` for a query-derived filename or `--filename <path>` for an explicit destination.
+Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
 The tool does not run scans or change account settings in this slice.
 
 For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B2.2 --paths native,artium --offline --with-dependencies`.
