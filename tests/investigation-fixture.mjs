@@ -16,7 +16,7 @@ export async function withInvestigation(check) {
       '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1'], { stdio: 'ignore' })
     const calls = []
     let mode = 'normal'
-    const banner = (transport, timestamp) => ({ ip_str: '192.0.2.7', port: 443, transport, timestamp, data: 'synthetic banner fake-secret', location: { country_code: 'CA' } })
+    const banner = (transport, timestamp) => ({ ip_str: '192.0.2.7', port: 443, transport, timestamp, data: 'synthetic banner fake-secret', location: { country_code: 'CA' }, ssl: { cert: { pubkey: { bits: 2048, type: 'rsa' } } } })
     const banners = [banner('tcp', '2026-01-01'), banner('udp', '2026-01-02'), { ...banner('tcp', '2026-01-03'), metadata: { truncated: ['http.html'] } }]
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
@@ -27,14 +27,14 @@ export async function withInvestigation(check) {
       if (mode === 'bad-port') { response.end('[22,"443"]'); return }
       const page = url.searchParams.get('page')
       const values = {
-        '/shodan/host/192.0.2.7': { ip_str: '192.0.2.7', ports: [443], data: mode === 'placeholder' ? [...banners, { ...banner('tcp', '2026-01-04'), placeholder: true }] : banners },
-        '/shodan/host/count': { total: 2, facets: { port: [{ value: 443, count: 1 }, { value: 80, count: 1 }] } },
-        '/shodan/host/search': { total: mode === 'empty' ? 0 : 2, matches: mode === 'empty' ? [] : mode === 'long' ? [{ ...banners[0], data: 'x'.repeat(600) }] : mode === 'multipage' ? (page === '2' ? banners.slice(1, 2) : banners.slice(0, 1)) : page === '2' ? [] : banners.slice(0, 2) },
+        '/shodan/host/192.0.2.7': { ip_str: '192.0.2.7', ports: [443], ...(url.searchParams.get('minify') === 'true' || mode === 'missing-banners' ? {} : { data: mode === 'placeholder' ? [...banners, { ...banner('tcp', '2026-01-04'), placeholder: true }] : banners }) },
+        '/shodan/host/count': { total: 2, facets: { [url.searchParams.get('facets')?.split(':')[0] ?? 'port']: [{ value: 443, count: 1 }, { value: 80, count: 1 }] } },
+        '/shodan/host/search': { total: mode === 'empty' ? 0 : mode === 'later-page' ? 102 : 2, matches: mode === 'empty' ? [] : mode === 'long' ? [{ ...banners[0], data: 'x'.repeat(600) }] : mode === 'multipage' ? (page === '2' ? banners.slice(1, 2) : banners.slice(0, 1)) : mode === 'later-page' ? (page === '1' ? Array.from({ length: 100 }, () => banners[0]) : page === '2' ? banners.slice(0, 2) : []) : page === '2' ? [] : banners.slice(0, 2) },
         '/shodan/host/search/facets': ['port', 'country'], '/shodan/host/search/filters': ['asn', 'port'],
         '/shodan/host/search/tokens': { attributes: { ports: [443] }, errors: [], string: '', filters: ['port'] }, '/shodan/ports': [22, 443],
         '/dns/domain/example.test': { domain: 'example.test', data: mode === 'domain-many' ? [{ type: 'A', value: '192.0.2.7' }, { type: 'A', value: '192.0.2.8' }] : mode === 'domain-txt' ? [{ type: 'A', value: '192.0.2.7' }, { type: 'TXT', value: '192.0.2.9' }] : [{ type: 'A', value: '192.0.2.7' }], more: true },
-        '/dns/resolve': { 'example.test': '192.0.2.7', 'missing.example.test': null }, '/dns/reverse': { '192.0.2.7': ['example.test'], '192.0.2.8': [] },
-        '/tools/httpheaders': { 'User-Agent': 'synthetic', Authorization: 'Bearer fake-secret' },
+        '/dns/resolve': { 'example.test': '192.0.2.7', 'monkey.example': '192.0.2.7', 'missing.example.test': null }, '/dns/reverse': { '192.0.2.7': ['example.test'], '192.0.2.8': [] },
+        '/tools/httpheaders': { 'User-Agent': 'synthetic', Authorization: 'Bearer other-credential', 'Proxy-Authorization': 'Basic proxy-credential' },
         '/tools/myip': request.headers['x-test-family'] === 'ipv6' ? '2001:db8::7' : '192.0.2.7',
         '/192.0.2.7': { ip: '192.0.2.7', ports: [443], cpes: [], hostnames: [], tags: [], vulns: ['CVE-2020-0001'] },
         '/labs/honeyscore/192.0.2.7': 0.25, '/shodan/services': { 443: 'https' },

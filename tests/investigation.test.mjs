@@ -5,6 +5,83 @@ import { test } from 'node:test'
 import { gunzipSync } from 'node:zlib'
 import { withInvestigation } from './investigation-fixture.mjs'
 
+test('redaction preserves public result keys across output and artifacts', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    assert.equal((await run(['dns', 'resolve', 'monkey.example'])).body['monkey.example'], '192.0.2.7')
+    const count = await run(['count', 'port:443', '--facets', 'key:2'])
+    assert.deepEqual(count.body.facets.key, [{ value: 443, count: 1 }, { value: 80, count: 1 }])
+    const stats = await run(['stats', 'port:443', '--facets', 'ssl.cert.pubkey.bits:2'])
+    assert.equal(stats.body.facets['ssl.cert.pubkey.bits'][0].value, 443)
+    const selected = await run(['search', 'port:443', '--fields', 'ssl.cert.pubkey.bits', '--allow-operation', 'OP-003', '--query-credit-budget', '1'])
+    assert.deepEqual(selected.body.items, [{ 'ssl.cert.pubkey.bits': 2048 }, { 'ssl.cert.pubkey.bits': 2048 }])
+    const host = await run(['host', '192.0.2.7', '--save'])
+    assert.equal(host.body.host.data[0].ssl.cert.pubkey.bits, 2048)
+    assert.equal(host.body.banners[0].ssl.cert.pubkey.bits, 2048)
+    assert.equal(host.body.banners[0].data, 'synthetic banner [REDACTED]')
+    const saved = gunzipSync(await readFile(join(root, '192.0.2.7.json.gz'))).toString()
+    assert.equal(JSON.parse(saved.trim().split('\n')[0]).ssl.cert.pubkey.bits, 2048)
+    assert.doesNotMatch(saved, /fake-secret/)
+    const domain = await run(['domain', 'example.test', '--details', '--save', '--max-requests', '2', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])
+    assert.equal(domain.body.details[0].data[0].ssl.cert.pubkey.bits, 2048)
+    const enriched = gunzipSync(await readFile(join(root, 'example.test-hosts.json.gz'))).toString()
+    assert.equal(JSON.parse(enriched.trim().split('\n')[0]).ssl.cert.pubkey.bits, 2048)
+    assert.doesNotMatch(enriched, /fake-secret/)
+    const headers = await run(['tools', 'headers'])
+    assert.equal(headers.body.Authorization, '[REDACTED]')
+    assert.equal(headers.body['Proxy-Authorization'], '[REDACTED]')
+  })
+})
+
+test('minified host reads accept missing banners without weakening full reads', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, calls, run, setMode }) => {
+    for (const format of [[], ['--format', 'tsv'], ['--format', 'pretty']]) {
+      const result = await run(['host', '192.0.2.7', '--minify', 'true', ...format])
+      assert.equal(result.code, 0)
+      assert.deepEqual(result.body.host.ports, [443])
+      assert.deepEqual(result.body.banners, [])
+      assert.equal(calls.at(-1).query.minify, 'true')
+    }
+    const saved = await run(['host', '192.0.2.7', '--minify', 'true', '--save'])
+    assert.equal(saved.code, 0)
+    assert.equal(gunzipSync(await readFile(join(root, '192.0.2.7.json.gz'))).toString(), '\n')
+    setMode('missing-banners')
+    assert.equal((await run(['host', '192.0.2.7'])).body.error, 'INVALID_RESPONSE')
+    assert.equal((await run(['host', '192.0.2.7', '--minify', 'false'])).body.error, 'INVALID_RESPONSE')
+    assert.equal((await run(['domain', 'example.test', '--details', '--max-requests', '2', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])).body.error, 'INVALID_RESPONSE')
+  })
+})
+
+test('search stops at the global total when resuming a page', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ calls, run, setMode }) => {
+    for (const [mode, page, offset, count] of [['normal', '1', '1', 1], ['normal', '1', '2', 0], ['later-page', '2', '0', 2], ['later-page', '2', '1', 1], ['later-page', '2', '2', 0]]) {
+      setMode(mode)
+      const before = calls.length
+      const result = await run(['search', 'port:443', '--page', page, '--offset', offset, '--max-pages', '2', '--max-requests', '2', '--allow-operation', 'OP-003', '--query-credit-budget', '2'])
+      assert.equal(result.code, 0)
+      assert.equal(result.body.count, count)
+      assert.equal(calls.length, before + 1)
+      assert.equal(result.body.continuation, undefined)
+      assert.equal(result.body.complete, false)
+      assert.equal(result.body.stopReason, 'exhausted')
+    }
+    setMode('later-page')
+    const clipped = await run(['search', 'port:443', '--page', '2', '--limit', '1', '--allow-operation', 'OP-003', '--query-credit-budget', '1'])
+    assert.deepEqual(clipped.body.continuation, { page: 2, offset: 1 })
+    assert.equal(clipped.body.stopReason, 'limit')
+    const before = calls.length
+    const multiple = await run(['search', 'port:443', '--limit', '101', '--max-pages', '3', '--max-requests', '3', '--allow-operation', 'OP-003', '--query-credit-budget', '3'])
+    assert.equal(multiple.body.count, 101)
+    assert.deepEqual(multiple.body.continuation, { page: 2, offset: 1 })
+    assert.equal(calls.length, before + 2)
+    const beforeResumed = calls.length
+    const resumed = await run(['search', 'port:443', '--offset', '99', '--max-pages', '3', '--max-requests', '3', '--allow-operation', 'OP-003', '--query-credit-budget', '3'])
+    assert.equal(resumed.body.count, 3)
+    assert.equal(resumed.body.continuation, undefined)
+    assert.equal(resumed.body.stopReason, 'exhausted')
+    assert.equal(calls.length, beforeResumed + 2)
+  })
+})
+
 test('host reads preserve distinct banners and write redacted verified files', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, calls, run, setMode }) => {
     const host = await run(['host', '192.0.2.7', '--history', '--minify', 'false'])

@@ -179,7 +179,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
   }
   const raw = await dispatch(path, query, operation.cost !== 'none')
   if (operation.id === 'OP-001') {
-    const result = parse(host, raw)
+    const result = parse(query.minify === 'true' ? host.extend({ data: z.array(banner).default([]) }) : host, raw)
     if (!sameAddress(result.ip_str, argument)) throw new ToolError('INVALID_RESPONSE', 'Host response does not match the selected address', 'Retry the selected address')
     const saved = await save(plan, result.data.filter(row => !Object.hasOwn(row, 'placeholder')), key ?? '\u0000')
     const vendorTruncations = [...new Set(result.data.flatMap(row => row.metadata?.truncated ?? []))]
@@ -208,6 +208,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
     let result = parse(search, raw)
     const offset = numberOption(flags, '--offset', 0, 1000000)
     if (offset > result.matches.length) throw new ToolError('INVALID_INPUT', 'Offset exceeds the selected page', 'Use a continuation returned by a previous search')
+    const start = (page - 1) * 100 + offset
     const firstRows = result.matches.slice(offset)
     const segments = [{ page, offset, rows: firstRows }]
     const rows = [...firstRows]
@@ -215,7 +216,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
     const total = result.total
     let currentPage = page
     let pages = 1
-    while (result.matches.length && rows.length < limit && rows.length < total && pages < plan.maxPages && canDispatch(true)) {
+    while (result.matches.length && rows.length < limit && start + rows.length < total && pages < plan.maxPages && canDispatch(true)) {
       currentPage++
       result = parse(search, await dispatch(path, { ...query, page: String(currentPage) }, true))
       segments.push({ page: currentPage, offset: 0, rows: result.matches })
@@ -254,12 +255,12 @@ export async function investigate(plan: Investigation, origin: string | undefine
       if (remaining < segment.rows.length) { continuation = { page: segment.page, offset: segment.offset + remaining }; break }
       remaining -= segment.rows.length
     }
-    const exhaustedFirstPage = page === 1 && currentPage === 1 && offset + items.length >= total
-    if (!continuation && result.matches.length && !complete && !exhaustedFirstPage) continuation = { page: currentPage + 1, offset: 0 }
+    const exhausted = start + items.length >= total
+    if (!continuation && result.matches.length && !exhausted) continuation = { page: currentPage + 1, offset: 0 }
     return { items, count: items.length, returned, total, page, pages, requests, queryCreditEstimate: credits, costKnowledge: 'estimated', complete, ...(display === undefined ? {} : { display }),
       ...(vendorTruncations.length ? { vendorTruncations } : {}),
       ...(truncations.length ? { truncations, help: 'Use --full to include complete text within the byte limit' } : {}),
-      stopReason: complete ? 'complete' : vendorTruncations.length && items.length === total ? 'vendor-truncated' : !result.matches.length ? 'empty-page' : items.length < rows.length ? 'limit' : !canDispatch(true) ? stopReason() : 'page-limit',
+      stopReason: complete ? 'complete' : vendorTruncations.length && exhausted ? 'vendor-truncated' : !result.matches.length ? 'empty-page' : exhausted ? 'exhausted' : items.length < rows.length ? 'limit' : !canDispatch(true) ? stopReason() : 'page-limit',
       ...(continuation ? { continuation } : {}) }
   }
   if (operation.id === 'OP-040') {
@@ -322,7 +323,8 @@ export async function investigate(plan: Investigation, origin: string | undefine
     const result = parse(z.record(z.string(), z.array(z.string())), raw)
     return Object.fromEntries((argument ?? '').split(',').map(ip => [ip, result[ip] ?? null]))
   }
-  if (operation.id === 'OP-043') return parse(z.record(z.string(), z.string()), raw)
+  if (operation.id === 'OP-043') return Object.fromEntries(Object.entries(parse(z.record(z.string(), z.string()), raw))
+    .map(([header, content]) => [header, /^(?:proxy-)?authorization$/i.test(header) ? '[REDACTED]' : content]))
   if (operation.id === 'OP-044' || operation.id === 'OP-072') {
     const address = parse(z.string(), raw)
     const family = operation.id === 'OP-072' ? 6 : 4
