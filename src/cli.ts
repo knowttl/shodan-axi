@@ -3,7 +3,9 @@ import { homedir } from 'node:os'
 import { configPath, putProfile, readConfig, secret, select } from './credentials.js'
 import { description, nextSteps } from './discovery.js'
 import { ToolError } from './errors.js'
+import { investigate, planInvestigation } from './investigation.js'
 import { readPrivate } from './private-file.js'
+import { clean } from './redact.js'
 import { read } from './vendor.js'
 
 const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, config path'
@@ -19,43 +21,67 @@ const help: Record<string, string> = {
   'config path': 'config path [--config <absolute-path>] [--json] - show the config path',
 }
 
-function clean(value: unknown, key: string): unknown {
-  if (typeof value === 'string') {
-    const form = new URLSearchParams({ key }).toString().slice(4)
-    return value.split(key).join('[REDACTED]').split(encodeURIComponent(key)).join('[REDACTED]').split(form).join('[REDACTED]').split(JSON.stringify(key).slice(1, -1)).join('[REDACTED]')
-  }
-  if (Array.isArray(value)) return value.map(item => clean(item, key))
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([field, item]) => [field, /(?:key|secret|token|password)/i.test(field) ? '[REDACTED]' : clean(item, key)]))
-  return value
-}
-
 export async function main(args: string[]): Promise<void> {
   let key = ''
   let json = args.includes('--json')
   try {
     const flags = new Map<string, string | boolean>()
     const words: string[] = []
+    const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename' }
+    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost']
+    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--allow-operation', '--fields', '--facets', '--type', '--minify', '--filename', '--format', '--separator']
     for (let index = 0; index < args.length; index++) {
-      const arg = args[index]
-      if (!arg) continue
-      if (!arg.startsWith('--')) { words.push(arg); continue }
-      if (!['--json', '--help', '--config', '--profile', '--env', '--file'].includes(arg) || flags.has(arg)) {
+      const input = args[index]
+      if (!input) continue
+      const arg = aliases[input] ?? input
+      if (!arg.startsWith('-')) { words.push(arg); continue }
+      if (![...booleanFlags, ...valueFlags].includes(arg) || flags.has(arg)) {
         const flag = /^--[a-z][a-z0-9-]*$/.test(arg) ? arg : 'flag'
         throw new ToolError('INVALID_INPUT', `Unknown or repeated ${flag}`, 'Valid flags: --help, --json, --config, --profile; profile setup also accepts --env or --file')
       }
-      if (arg === '--json' || arg === '--help') flags.set(arg, true)
+      if (booleanFlags.includes(arg)) flags.set(arg, true)
       else {
         const value = args[++index]
         if (!value || value.startsWith('--')) throw new ToolError('INVALID_INPUT', `Missing value for ${arg}`, usage)
         flags.set(arg, value)
       }
     }
-    json = flags.has('--json')
+    const outputFormat = flags.get('--output')
+    if (outputFormat !== undefined && outputFormat !== 'json' && outputFormat !== 'toon') throw new ToolError('INVALID_INPUT', 'Unknown output format', 'Use --output json or --output toon')
+    json = flags.has('--json') || outputFormat === 'json'
     const readOnly = process.env.SHODAN_AXI_READ_ONLY
     if (readOnly && !/^(?:true|false|1|0)$/i.test(readOnly)) throw new ToolError('CONFIG_INVALID', 'Invalid read-only setting', 'Set SHODAN_AXI_READ_ONLY to true or false')
     const option = (flag: string): string | undefined => { const value = flags.get(flag); return typeof value === 'string' ? value : undefined }
     const command = words.join(' ')
-    const allowed = (words[0] === 'profile' && words[1] === 'set') || words[0] === 'init' ? ['--json', '--help', '--config', '--env', '--file'] : ['--json', '--help', '--config', '--profile']
+    const investigation = planInvestigation(words, flags)
+    if (investigation) {
+      if (flags.has('--help')) {
+        output({ command: investigation.operation.command, operation: investigation.operation.id, effect: 'read', cost: investigation.operation.cost,
+          argument: investigation.operation.argument ?? null, flags: investigation.operation.flags ?? [],
+          defaults: { page: 1, maxPages: 1, maxRequests: 1, maxBytes: 1048576, timeoutMs: 30000, queryCreditBudget: 0 },
+          example: `shodan-axi ${investigation.operation.command}${investigation.operation.argument ? ` <${investigation.operation.argument}>` : ''}${investigation.operation.cost === 'none' ? '' : ` --allow-operation ${investigation.operation.id} --query-credit-budget 1`}${investigation.operation.cost === 'unknown' ? ' --accept-unknown-cost --max-requests 1' : ''}`,
+          help: 'Use explicit request and credit budgets when required.' }, json)
+        return
+      }
+      if (investigation.operation.id === 'OP-059') {
+        const result = await investigate(investigation, undefined, undefined)
+        if (Buffer.byteLength(JSON.stringify(result)) > investigation.maxBytes) throw new ToolError('LIMIT_REACHED', 'Output exceeds the byte limit', 'Increase --max-bytes or narrow the selection')
+        output(result, json); return
+      }
+      const chosen = await select(configPath(option('--config')), option('--profile'))
+      key = await secret(chosen)
+      if (investigation.operation.cost !== 'none') {
+        const summary = clean({ operation: investigation.operation.id, query: investigation.argument ?? null, maxPages: investigation.maxPages,
+          maxRequests: investigation.maxRequests, queryCreditBudget: investigation.queryBudget, cost: investigation.operation.cost }, key)
+        process.stderr.write(`cost: ${JSON.stringify(summary)}\n`)
+      }
+      const result = clean(await investigate(investigation, chosen.profile.origin, key), key)
+      if (Buffer.byteLength(JSON.stringify(result)) > investigation.maxBytes) throw new ToolError('LIMIT_REACHED', 'Output exceeds the byte limit', 'Increase --max-bytes or narrow the selection')
+      if (!json && result && typeof result === 'object' && 'display' in result && typeof result.display === 'string') process.stdout.write(`${result.display}\n`)
+      else output(result, json)
+      return
+    }
+    const allowed = (words[0] === 'profile' && words[1] === 'set') || words[0] === 'init' ? ['--json', '--output', '--help', '--config', '--env', '--file'] : ['--json', '--output', '--help', '--config', '--profile']
     if ([...flags.keys()].some(flag => !allowed.includes(flag))) throw new ToolError('INVALID_INPUT', 'Flag is not available for this command', usage)
     if (flags.has('--help')) {
       const topic = words[0] === 'profile' && words[1] === 'set' && words.length <= 3 ? 'profile set' : command

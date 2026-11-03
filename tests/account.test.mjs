@@ -9,7 +9,8 @@ import { test } from 'node:test'
 test('packaged account reads use the selected secret and preserve values', async () => {
   const root = await mkdtemp(join(tmpdir(), 'shodan-test-'))
   const tarball = execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', root, '--json'], { encoding: 'utf8' })
-  const packageFile = join(root, JSON.parse(tarball)[0].filename)
+  const packageDetails = JSON.parse(tarball)[0]
+  const packageFile = join(root, packageDetails.filename)
   execFileSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', root, packageFile], { stdio: 'ignore' })
   const executable = join(root, 'node_modules', '.bin', 'shodan-axi')
   const keyFile = join(root, 'key.pem')
@@ -49,7 +50,7 @@ test('packaged account reads use the selected secret and preserve values', async
   })
   try {
     for (const alias of ['version', '--version', '-v', '-V']) {
-      assert.equal(execFileSync(executable, [alias], { encoding: 'utf8', env: { ...env, SHODAN_AXI_CONFIG: '/nonexistent/invalid' } }), '0.1.0\n')
+      assert.equal(execFileSync(executable, [alias], { encoding: 'utf8', env: { ...env, SHODAN_AXI_CONFIG: '/nonexistent/invalid' } }), `${packageDetails.version}\n`)
     }
     const rawInit = await run(['init', 'inline-secret'])
     assert.equal(rawInit.code, 2)

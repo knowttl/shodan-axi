@@ -4,8 +4,10 @@
       "command": "account profile",
       "operation": "OP-039",
       "effect": "read",
+      "cost": "none",
       "flags": [
         "--json",
+        "--output",
         "--help",
         "--config",
         "--profile"
@@ -16,11 +18,378 @@
       "command": "info",
       "operation": "OP-045",
       "effect": "read",
+      "cost": "none",
       "flags": [
         "--json",
+        "--output",
         "--help",
         "--config",
         "--profile"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "host",
+      "operation": "OP-001",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--history",
+        "--minify",
+        "--save",
+        "--filename",
+        "--format"
+      ],
+      "arguments": [
+        {
+          "name": "ip"
+        }
+      ]
+    },
+    {
+      "command": "count",
+      "operation": "OP-002",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--facets"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "stats",
+      "operation": "OP-002",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--facets",
+        "--limit",
+        "--filename"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "search",
+      "operation": "OP-003",
+      "effect": "read",
+      "cost": "query",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--page",
+        "--offset",
+        "--minify",
+        "--limit",
+        "--max-pages",
+        "--fields",
+        "--full",
+        "--separator",
+        "--color",
+        "--no-color"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "search facets",
+      "operation": "OP-004",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "search filters",
+      "operation": "OP-005",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "search tokens",
+      "operation": "OP-006",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "ports",
+      "operation": "OP-007",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "domain",
+      "operation": "OP-040",
+      "effect": "read",
+      "cost": "query",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--history",
+        "--type",
+        "--page",
+        "--offset",
+        "--limit",
+        "--max-pages",
+        "--details",
+        "--save"
+      ],
+      "arguments": [
+        {
+          "name": "domain"
+        }
+      ]
+    },
+    {
+      "command": "dns resolve",
+      "operation": "OP-041",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": [
+        {
+          "name": "names"
+        }
+      ]
+    },
+    {
+      "command": "dns reverse",
+      "operation": "OP-042",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": [
+        {
+          "name": "ips"
+        }
+      ]
+    },
+    {
+      "command": "tools headers",
+      "operation": "OP-043",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "myip",
+      "operation": "OP-044",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--ipv6"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "internetdb host",
+      "operation": "OP-059",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": [
+        {
+          "name": "ip"
+        }
+      ]
+    },
+    {
+      "command": "honeyscore",
+      "operation": "OP-064",
+      "effect": "read",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--accept-unknown-cost"
+      ],
+      "arguments": [
+        {
+          "name": "ip"
+        }
+      ]
+    },
+    {
+      "command": "services",
+      "operation": "OP-066",
+      "effect": "read",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--accept-unknown-cost"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "myip --ipv6",
+      "operation": "OP-072",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
       ],
       "arguments": []
     },
