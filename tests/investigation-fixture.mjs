@@ -48,6 +48,16 @@ export async function withInvestigation(check) {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
       }
       response.setHeader('content-type', 'application/json')
+      if (mode === 'trickle') {
+        response.write(' ')
+        let chunks = 0
+        const timer = setInterval(() => {
+          response.write(' ')
+          if (++chunks === 20) { clearInterval(timer); response.end(JSON.stringify(values[url.pathname])) }
+        }, 100)
+        response.on('close', () => { clearInterval(timer) })
+        return
+      }
       response.end(JSON.stringify(values[url.pathname]))
     })
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))

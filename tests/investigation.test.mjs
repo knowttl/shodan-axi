@@ -294,6 +294,22 @@ test('public and IPv6 reads preserve credential and transport boundaries', { tim
   })
 })
 
+test('elapsed timeout cancels responses despite continued chunks', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ calls, run, setMode }) => {
+    setMode('trickle')
+    const before = calls.length
+    const timedOut = await run(['ports', '--timeout', '500'])
+    assert.notEqual(timedOut.code, 0)
+    assert.equal(timedOut.body.error, 'UPSTREAM_ERROR')
+    assert.equal(calls.length, before + 1)
+    const completed = await run(['ports', '--timeout', '4000'])
+    assert.equal(completed.code, 0)
+    assert.deepEqual(completed.body.items, [22, 443])
+    setMode('normal')
+    assert.equal((await run(['ports'])).code, 0)
+  })
+})
+
 test('unknown-cost and failing requests do not bypass budgets or retry', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ calls, run, setMode }) => {
     const before = calls.length

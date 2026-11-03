@@ -9,8 +9,9 @@ export async function requestJson(origin: string, path: string, key: string | un
   const url = new URL(path, origin)
   if (key !== undefined) url.searchParams.set('key', key)
   for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value)
+  let timer: ReturnType<typeof setTimeout> | undefined
   const bytes = await new Promise<Buffer>((resolve, reject) => {
-    const req = request(url, { method: 'GET', timeout, ...(family ? { family } : {}) }, response => {
+    const req = request(url, { method: 'GET', ...(family ? { family } : {}) }, response => {
       if (response.statusCode !== 200) {
         response.resume()
         const code = response.statusCode === 404 ? 'NOT_FOUND' : response.statusCode === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR'
@@ -27,10 +28,10 @@ export async function requestJson(origin: string, path: string, key: string | un
       response.on('end', () => { resolve(Buffer.concat(chunks)) })
       response.on('error', reject)
     })
-    req.on('timeout', () => { req.destroy(new Error('timeout')) })
+    timer = setTimeout(() => { req.destroy(new Error('timeout')) }, timeout)
     req.on('error', reject)
     req.end()
-  }).catch((error: unknown) => {
+  }).finally(() => { clearTimeout(timer) }).catch((error: unknown) => {
     if (error instanceof ToolError) throw error
     throw new ToolError('UPSTREAM_ERROR', 'Request could not be completed', 'Check connectivity and retry later')
   })
