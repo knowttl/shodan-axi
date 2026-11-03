@@ -1,6 +1,23 @@
-export type ReadOperation = { readonly id: string; readonly command: string; readonly path: string; readonly effect: 'read'; readonly cost: 'none'; readonly acceptance: string }
+export type ReadOperation = { readonly id: string; readonly command: string; readonly path: string; readonly effect: 'read'; readonly cost: 'none' | 'query' | 'unknown'; readonly acceptance: string; readonly argument?: string; readonly flags?: readonly string[] }
 
 export const operations = [
   { id: 'OP-039', command: 'account profile', path: '/account/profile', effect: 'read', cost: 'none', acceptance: 'AC-039' },
   { id: 'OP-045', command: 'info', path: '/api-info', effect: 'read', cost: 'none', acceptance: 'AC-045' },
+  { id: 'OP-001', command: 'host', path: '/shodan/host/{ip}', effect: 'read', cost: 'none', acceptance: 'AC-001', argument: 'ip', flags: ['--history', '--minify', '--save', '--filename', '--format'] },
+  { id: 'OP-002', command: 'count', path: '/shodan/host/count', effect: 'read', cost: 'none', acceptance: 'AC-002', argument: 'query', flags: ['--facets'] },
+  { id: 'OP-002', command: 'stats', path: '/shodan/host/count', effect: 'read', cost: 'none', acceptance: 'CLI-011', argument: 'query', flags: ['--facets', '--limit', '--filename'] },
+  { id: 'OP-003', command: 'search', path: '/shodan/host/search', effect: 'read', cost: 'query', acceptance: 'AC-003', argument: 'query', flags: ['--page', '--offset', '--minify', '--limit', '--max-pages', '--fields', '--full', '--separator', '--color', '--no-color'] },
+  { id: 'OP-004', command: 'search facets', path: '/shodan/host/search/facets', effect: 'read', cost: 'none', acceptance: 'AC-004' },
+  { id: 'OP-005', command: 'search filters', path: '/shodan/host/search/filters', effect: 'read', cost: 'none', acceptance: 'AC-005' },
+  { id: 'OP-006', command: 'search tokens', path: '/shodan/host/search/tokens', effect: 'read', cost: 'none', acceptance: 'AC-006', argument: 'query' },
+  { id: 'OP-007', command: 'ports', path: '/shodan/ports', effect: 'read', cost: 'none', acceptance: 'AC-007' },
+  { id: 'OP-040', command: 'domain', path: '/dns/domain/{domain}', effect: 'read', cost: 'query', acceptance: 'AC-040', argument: 'domain', flags: ['--history', '--type', '--page', '--offset', '--limit', '--max-pages', '--details', '--save'] },
+  { id: 'OP-041', command: 'dns resolve', path: '/dns/resolve', effect: 'read', cost: 'none', acceptance: 'AC-041', argument: 'names' },
+  { id: 'OP-042', command: 'dns reverse', path: '/dns/reverse', effect: 'read', cost: 'none', acceptance: 'AC-042', argument: 'ips' },
+  { id: 'OP-043', command: 'tools headers', path: '/tools/httpheaders', effect: 'read', cost: 'none', acceptance: 'AC-043' },
+  { id: 'OP-044', command: 'myip', path: '/tools/myip', effect: 'read', cost: 'none', acceptance: 'AC-044', flags: ['--ipv6'] },
+  { id: 'OP-059', command: 'internetdb host', path: '/{ip}', effect: 'read', cost: 'none', acceptance: 'AC-059', argument: 'ip' },
+  { id: 'OP-064', command: 'honeyscore', path: '/labs/honeyscore/{ip}', effect: 'read', cost: 'unknown', acceptance: 'AC-064', argument: 'ip' },
+  { id: 'OP-066', command: 'services', path: '/shodan/services', effect: 'read', cost: 'unknown', acceptance: 'AC-066' },
+  { id: 'OP-072', command: 'myip --ipv6', path: '/tools/myip', effect: 'read', cost: 'none', acceptance: 'AC-072' },
 ] as const satisfies readonly ReadOperation[]

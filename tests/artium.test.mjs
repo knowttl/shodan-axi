@@ -64,14 +64,28 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       const url = new URL(request.url, 'https://localhost')
       requests.push({ path: url.pathname, key: url.searchParams.get('key') })
       response.setHeader('content-type', 'application/json')
-      response.end(JSON.stringify(url.pathname === '/api-info'
-        ? { plan: 'synthetic', query_credits: 20, scan_credits: 98, monitored_ips: 256, usage_limits: { query_credits: -1, scan_credits: -1, monitored_ips: -1 } }
-        : { member: false, credits: 0, display_name: null, created: '2026-01-01' }))
+      const banner = { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: 'synthetic' }
+      const banners = [banner, { ...banner, transport: 'udp', timestamp: '2026-01-02' }, { ...banner, timestamp: '2026-01-03' }]
+      const bodies = {
+        '/api-info': { plan: 'synthetic', query_credits: 20, scan_credits: 98, monitored_ips: 256, usage_limits: { query_credits: -1, scan_credits: -1, monitored_ips: -1 } },
+        '/account/profile': { member: false, credits: 0, display_name: null, created: '2026-01-01' },
+        '/shodan/host/192.0.2.7': { ip_str: '192.0.2.7', ports: [443], data: banners },
+        '/shodan/host/count': { total: 2, facets: { port: [{ value: 443, count: 1 }, { value: 80, count: 1 }] } },
+        '/shodan/host/search': { total: 2, matches: url.searchParams.get('page') === '2' ? [] : [banner] },
+        '/shodan/host/search/facets': ['port', 'country'], '/shodan/host/search/filters': ['asn', 'port'],
+        '/shodan/host/search/tokens': { attributes: { ports: [443] }, errors: [], string: '', filters: ['port'] },
+        '/shodan/ports': [22, 443], '/dns/domain/example.test': { domain: 'example.test', data: [{ type: 'A', value: '192.0.2.7' }], more: true },
+        '/dns/resolve': { 'example.test': '192.0.2.7' }, '/dns/reverse': { '192.0.2.7': ['example.test'] },
+        '/tools/httpheaders': { 'User-Agent': 'synthetic' }, '/tools/myip': request.headers['x-test-family'] === 'ipv6' ? '2001:db8::7' : '192.0.2.7',
+        '/192.0.2.7': { ip: '192.0.2.7', ports: [443], cpes: [], hostnames: [], tags: [], vulns: ['CVE-2020-0001'] },
+        '/labs/honeyscore/192.0.2.7': 0.25, '/shodan/services': { 443: 'https' },
+      }
+      response.end(JSON.stringify(bodies[url.pathname]))
     })
-    await new Promise(resolve => fake.listen(0, 'localhost', resolve))
+    await new Promise(resolve => fake.listen(0, '127.0.0.1', resolve))
     const port = fake.address().port
     const bootstrap = join(temporary, 'route.mjs')
-    await writeFile(bootstrap, `import https from 'node:https';\nimport { syncBuiltinESMExports } from 'node:module';\nconst original = https.request;\nhttps.request = function (url, ...args) { if (!(url instanceof URL) || url.origin !== 'https://api.shodan.io') throw new Error('Unexpected destination'); const target = new URL(url); target.hostname = 'localhost'; target.port = ${port}; return original.call(this, target, ...args); };\nsyncBuiltinESMExports();\nawait import(${JSON.stringify(pathToFileURL(manifest.toolExecutable).href)});\n`)
+    await writeFile(bootstrap, `import https from 'node:https';\nimport { syncBuiltinESMExports } from 'node:module';\nconst original = https.request;\nhttps.request = function (url, ...args) { if (!(url instanceof URL) || !['https://api.shodan.io', 'https://internetdb.shodan.io', 'https://apiv6.shodan.io'].includes(url.origin)) throw new Error('Unexpected destination'); const target = new URL(url); if (url.origin === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } target.hostname = '127.0.0.1'; target.port = ${port}; args[0].servername = 'localhost'; return original.call(this, target, ...args); };\nsyncBuiltinESMExports();\nawait import(${JSON.stringify(pathToFileURL(manifest.toolExecutable).href)});\n`)
 
     process.env.NODE_ENV = 'test'
     const [{ openStore, createCredentialStore }, { EnvironmentKeyProvider }, { EmbeddedSecretSource }, { createShodanAdapter },
@@ -113,7 +127,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       child.on('error', reject)
       child.on('close', code => { resolve({ code, stdout, stderr }) })
     })
-    for (const args of [['init', '--env', 'X'], ['host', '192.0.2.1'], ['info', '--profile', 'other'], ['info', '--origin', 'https://example.test']]) {
+    for (const args of [['init', '--env', 'X'], ['scan', 'submit', '192.0.2.1'], ['info', '--profile', 'other'], ['info', '--origin', 'https://example.test']]) {
       const denied = await run(args)
       assert.notEqual(denied.code, 0)
       assert.equal(credentialReads, 0)
@@ -144,9 +158,50 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     for (const alias of ['version', '--version', '-v', '-V']) {
       const version = await run([alias], false)
       assert.equal(version.code, 0, version.stdout + version.stderr)
-      assert.equal(version.stdout, '0.1.0\n')
+      assert.equal(version.stdout, `${packed[0].version}\n`)
     }
     assert.equal(requests.length, 4)
+    if (process.env.SHODAN_TEST_SLICE !== 'B1.1') {
+      const read = async args => {
+        const result = await run(args)
+        assert.equal(result.code, 0, result.stdout + result.stderr)
+        return JSON.parse(result.stdout)
+      }
+      const host = await read(['host', '192.0.2.7', '--history'])
+      assert.deepEqual(host.banners.map(row => [row.transport, row.timestamp]), [['tcp', '2026-01-01'], ['udp', '2026-01-02'], ['tcp', '2026-01-03']])
+      assert.equal((await read(['count', 'port:443', '--facets', 'port:2'])).total, 2)
+      assert.equal((await read(['stats', 'port:443', '--facets', 'port:2'])).count, 2)
+      assert.deepEqual((await read(['search', 'facets'])).items, ['port', 'country'])
+      assert.deepEqual((await read(['search', 'filters'])).items, ['asn', 'port'])
+      assert.deepEqual((await read(['search', 'tokens', 'port:443'])).attributes.ports, [443])
+      assert.deepEqual((await read(['ports'])).items, [22, 443])
+      assert.equal((await read(['dns', 'resolve', 'example.test']))['example.test'], '192.0.2.7')
+      assert.deepEqual((await read(['dns', 'reverse', '192.0.2.7']))['192.0.2.7'], ['example.test'])
+      assert.equal((await read(['tools', 'headers']))['User-Agent'], 'synthetic')
+      assert.equal((await read(['myip'])).addressFamily, 4)
+      assert.equal((await read(['myip', '--ipv6'])).addressFamily, 6)
+      const beforeBlocked = requests.length
+      const beforeCredentialReads = credentialReads
+      for (const args of [
+        ['search', 'port:443', '--allow-operation', 'OP-003', '--query-credit-budget', '1'],
+        ['domain', 'example.test', '--allow-operation', 'OP-040', '--query-credit-budget', '1'],
+        ['honeyscore', '192.0.2.7', '--allow-operation', 'OP-064', '--accept-unknown-cost', '--max-requests', '1', '--query-credit-budget', '1'],
+        ['services', '--allow-operation', 'OP-066', '--accept-unknown-cost', '--max-requests', '1', '--query-credit-budget', '1'],
+        ['host', '192.0.2.7', '--save'],
+        ['host', '192.0.2.7', '--filename', 'result.json.gz'],
+        ['host', 'not-an-address'],
+        ['dns', 'resolve', 'a..invalid'],
+      ]) {
+        const denied = await run(args)
+        assert.notEqual(denied.code, 0)
+        assert.equal(requests.length, beforeBlocked)
+        assert.equal(credentialReads, beforeCredentialReads)
+      }
+      store.replaceCredential('shodan-axi', { auth: 'none', origin: 'https://api.shodan.io' }, 1, 'synthetic-development-user', Date.now())
+      const snapshot = await read(['internetdb', 'host', '192.0.2.7'])
+      assert.deepEqual(snapshot.vulns, ['CVE-2020-0001'])
+      assert.equal(requests.at(-1).key, null)
+    }
     assert.doesNotMatch(info.stdout + profile.stdout + JSON.stringify(db.prepare('SELECT * FROM audit').all()), /hosted-synthetic-key|conflicting-developer-key/)
     assert.deepEqual(await readdir(join(temporary, 'calls')), [])
   } finally {

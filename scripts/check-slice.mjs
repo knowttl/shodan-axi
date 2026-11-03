@@ -13,8 +13,9 @@ for (let index = 0; index < args.length; index++) {
   else options.set(flag, args[++index])
 }
 const paths = typeof options.get('--paths') === 'string' ? options.get('--paths').split(',') : []
-if (options.get('--id') !== 'B1.1' || !options.has('--offline') || !paths.length || new Set(paths).size !== paths.length || paths.some(path => !['native', 'artium'].includes(path))) {
-  console.error('Select B1.1, --offline and at least one valid path')
+const id = options.get('--id')
+if (!['B1.1', 'B2.1'].includes(id) || !options.has('--offline') || !paths.length || new Set(paths).size !== paths.length || paths.some(path => !['native', 'artium'].includes(path))) {
+  console.error('Select B1.1 or B2.1, --offline and at least one valid path')
   process.exit(2)
 }
 const types = spawnSync(process.execPath, ['--test', 'tests/types.test.mjs'], { stdio: 'inherit' })
@@ -22,16 +23,22 @@ let passed = types.status === 0 ? 1 : 0
 let failed = types.status === 0 ? 0 : 1
 let pending = 0
 for (const path of paths) {
-  const file = path === 'native' ? 'tests/account.test.mjs' : 'tests/artium.test.mjs'
-  if (!existsSync(file) || (path === 'artium' && (!process.env.ARTIUM_FIXTURE_ROOT || !process.env.ARTIUM_FIXTURE_MANIFEST))) {
+  const tests = []
+  if (id === 'B1.1' || options.has('--with-dependencies')) tests.push(...(path === 'native'
+    ? ['tests/account.test.mjs', 'tests/credentials.test.mjs', 'tests/private-file.test.mjs', 'tests/interruption.test.mjs'] : ['tests/artium.test.mjs']))
+  if (id === 'B2.1') {
+    const test = path === 'native' ? 'tests/investigation.test.mjs' : 'tests/artium.test.mjs'
+    if (!tests.includes(test)) tests.push(test)
+  }
+  if (!tests.length || tests.some(file => !existsSync(file)) || (path === 'artium' && (!process.env.ARTIUM_FIXTURE_ROOT || !process.env.ARTIUM_FIXTURE_MANIFEST))) {
     console.error(`${path}: pending`)
     pending++
     continue
   }
-  const result = spawnSync(process.execPath, ['--test', file, ...(path === 'native' ? ['tests/private-file.test.mjs', 'tests/interruption.test.mjs'] : [])], { stdio: 'inherit' })
+  const result = spawnSync(process.execPath, ['--test', ...tests], { stdio: 'inherit', env: { ...process.env, SHODAN_TEST_SLICE: id } })
   if (result.status === 0) passed++
   else failed++
 }
-console.error(`slice B1.1: passed ${passed}, failed ${failed}, pending ${pending}, skipped 0`)
+console.error(`slice ${id}: passed ${passed}, failed ${failed}, pending ${pending}, skipped 0`)
 if (process.platform !== 'win32') console.error('Windows platform verification: pending')
 if (failed || pending) process.exit(1)
