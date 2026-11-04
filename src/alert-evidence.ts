@@ -29,7 +29,7 @@ export function validateAlertEvidence(words: string[], flags: Flags): void {
   }
 }
 
-function union(networks: string[]): string[] {
+export function union(networks: string[]): string[] {
   const ranges = networks.map(network => {
     let address: ipaddr.IPv4 | ipaddr.IPv6; let prefix: number
     try { [address, prefix] = network.includes('/') ? ipaddr.parseCIDR(network) : [ipaddr.parse(network), ipaddr.parse(network).kind() === 'ipv4' ? 32 : 128] } catch { return fail('Invalid monitored network') }

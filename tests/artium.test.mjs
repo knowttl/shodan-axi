@@ -65,6 +65,8 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       const banners = [banner, { ...banner, transport: 'udp', timestamp: '2026-01-02' }, { ...banner, timestamp: '2026-01-03' }]
       const bodies = {
         '/api-info': { plan: 'synthetic', query_credits: 20, scan_credits: 98, monitored_ips: 256, usage_limits: { query_credits: -1, scan_credits: -1, monitored_ips: -1 } },
+        '/shodan/data': [{ name: 'raw-daily', description: 'Synthetic daily banners', scope: 'daily', unknown: 'private-value' }],
+        '/shodan/data/raw-daily': [{ name: 'synthetic.json', size: 10, sha1: 'd68c19a0a345b7eab78d5e11e991c026ec60db63', timestamp: 1793707200000, url: 'https://downloads.example.test/file?signature=private-signature', unknown: 'private-value' }],
         '/account/profile': { member: false, credits: 0, display_name: null, created: '2026-01-01' },
         '/shodan/host/192.0.2.7': { ip_str: '192.0.2.7', ports: [443], data: banners },
         '/shodan/host/count': { total: 2, facets: { port: [{ value: 443, count: 1 }, { value: 80, count: 1 }] } },
@@ -225,7 +227,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeHistoryCredentials)
         }
       }
-      if (['B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['alert', 'info', 'alert-a'])).id, 'alert-a')
         assert.equal((await read(['alert', 'list'])).items[0].id, 'alert-a')
         assert.equal((await read(['alert', 'triggers'])).items[0].rule, '*')
@@ -251,7 +253,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           }
         }
       }
-      if (['B3.2', 'B3.3', 'B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const info = await read(['org', 'info'])
         assert.equal(info.members[0].email, 'existing@example.test')
         assert.equal(Object.hasOwn(info, 'api_key'), false)
@@ -267,7 +269,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
-      if (['B3.3', 'B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.3', 'B3.4', 'B4.1', 'B4.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['scan', 'protocols'])).https, 'Synthetic HTTPS module')
         const list = await read(['scan', 'list'])
         assert.equal(list.items[0].id, 'scan-a')
@@ -285,7 +287,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
-      if (['B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.4', 'B4.1', 'B4.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const before = requests.length; const beforeCredentials = credentialReads
         for (const [command, target, operation] of [
           ['ping', '192.0.2.7', 'OP-060'], ['geoping', '192.0.2.7', 'OP-061'],
@@ -298,7 +300,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           }
         }
       }
-      if (process.env.SHODAN_TEST_SLICE === 'B4.1' || !process.env.SHODAN_TEST_SLICE) {
+      if (['B4.1', 'B4.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const stats = await read(['alert', 'stats'])
         assert.equal(stats.complete, false)
         assert.equal(stats.aggregation, 'partial')
@@ -311,6 +313,19 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.notEqual((await run(args)).code, 0)
           assert.equal(requests.length, before, JSON.stringify(args))
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
+        }
+      }
+      if (process.env.SHODAN_TEST_SLICE === 'B4.2' || !process.env.SHODAN_TEST_SLICE) {
+        const datasets = await read(['data', 'list'])
+        assert.deepEqual(datasets.items, [{ name: 'raw-daily', description: 'Synthetic daily banners', scope: 'daily' }])
+        const files = await read(['data', 'list', '--dataset', 'raw-daily'])
+        assert.deepEqual(files.items, [{ name: 'synthetic.json', size: 10, sha1: 'd68c19a0a345b7eab78d5e11e991c026ec60db63', timestamp: 1793707200000 }])
+        assert.doesNotMatch(JSON.stringify(files), /private-signature|private-value|downloads\.example/)
+        const before = requests.length; const beforeCredentials = credentialReads
+        for (const args of [['download', 'port:443'], ['alert', 'download'], ['data', 'download', 'raw-daily', 'synthetic.json']]) {
+          assert.notEqual((await run(args)).code, 0)
+          assert.equal(requests.length, before)
+          assert.equal(credentialReads, beforeCredentials)
         }
       }
       store.replaceCredential('shodan-axi', { auth: 'none', origin: 'https://api.shodan.io' }, 1, 'synthetic-development-user', Date.now())

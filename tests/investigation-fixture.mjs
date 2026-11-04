@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:https'
+import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -28,6 +29,16 @@ export async function withInvestigation(check) {
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (url.pathname === '/fixture') {
+        if (mode === 'dataset-redirect') { response.writeHead(302, { location: 'http://127.0.0.1/private' }); response.end(); return }
+        const bytes = mode.startsWith('dataset-') ? Buffer.alloc(1024 * 1024 + 10, 'x') : Buffer.from('abcdefghij')
+        const match = /^bytes=(\d+)-(\d+)$/.exec(request.headers.range ?? '')
+        if (!match) { response.writeHead(416); response.end(); return }
+        const start = Number(match[1]); const end = Number(match[2])
+        if (mode === 'dataset-interrupt' && start > 0) { request.socket.destroy(); return }
+        response.writeHead(206, { etag: mode === 'dataset-version-change' ? '"fixture-v2"' : '"fixture-v1"', 'content-range': `bytes ${start}-${end}/${bytes.length}` })
+        response.end(bytes.subarray(start, end + 1)); return
+      }
       if (mode === 'scan-poll-failure' && url.pathname === '/shodan/scan/scan-a' && calls.filter(call => call.path === url.pathname).length > 1) { response.writeHead(503); response.end('{}'); return }
       if (mode === 'denied') { response.writeHead(403); response.end('{"error":"denied"}'); return }
       if (mode === 'redirect') { response.writeHead(301, { location: 'https://invalid.example/' }); response.end(); return }
@@ -136,6 +147,9 @@ export async function withInvestigation(check) {
       }
       const page = url.searchParams.get('page')
       const values = {
+        '/api-info': { query_credits: 20, scan_credits: 98 },
+        '/shodan/data': [{ name: 'raw-daily', description: 'Synthetic daily banners', scope: 'daily' }],
+        '/shodan/data/raw-daily': [{ name: 'synthetic.json', size: 10, sha1: 'd68c19a0a345b7eab78d5e11e991c026ec60db63', timestamp: 1793707200000, url: `https://127.0.0.1:${server.address().port}/fixture?signature=private-signature` }],
         '/shodan/host/192.0.2.7': { ip_str: '192.0.2.7', ports: [443], ...(url.searchParams.get('minify') === 'true' || mode === 'missing-banners' ? {} : { data: mode === 'placeholder' ? [...banners, { ...banner('tcp', '2026-01-04'), placeholder: true }] : banners }) },
         '/shodan/host/count': { total: 2, facets: { [url.searchParams.get('facets')?.split(':')[0] ?? 'port']: [{ value: 443, count: 1 }, { value: 80, count: 1 }] } },
         '/shodan/host/search': { total: mode === 'empty' ? 0 : mode === 'later-page' ? 102 : 2, matches: mode === 'empty' ? [] : mode === 'long' ? [{ ...banners[0], data: 'x'.repeat(600) }] : mode === 'multipage' ? (page === '2' ? banners.slice(1, 2) : banners.slice(0, 1)) : mode === 'later-page' ? (page === '1' ? Array.from({ length: 100 }, () => banners[0]) : page === '2' ? banners.slice(0, 2) : []) : page === '2' ? [] : banners.slice(0, 2) },
@@ -174,6 +188,10 @@ export async function withInvestigation(check) {
           { id: 'alert-a', name: 'First', filters: { ip: ['192.0.2.0/24', '192.0.2.0/25'] }, triggers: { any: { ignore: [{ ip: '192.0.2.9', port: 80 }] } }, notifiers: [{ id: 'n1', provider: 'email', args: { token: 'private-notifier-secret' } }] },
           { id: 'alert-b', name: 'Second', filters: { ip: ['192.0.2.9/32'] }, triggers: {}, notifiers: [] },
         ]
+      }
+      if (mode.startsWith('dataset-')) {
+        const bytes = Buffer.alloc(1024 * 1024 + 10, 'x')
+        values['/shodan/data/raw-daily'] = [{ name: 'synthetic.json', size: bytes.length, sha1: createHash('sha1').update(bytes).digest('hex'), url: `https://127.0.0.1:${server.address().port}/fixture?signature=private-signature` }]
       }
       if (mode === 'alert-formula-facets') values['/shodan/host/count'] = { total: 1, facets: { domain: [{ value: '=1+2', count: 1 }] } }
       if (mode === 'alert-multiple-facets') values['/shodan/host/count'] = { total: 2, facets: { port: [{ value: 443, count: 2 }, { value: 80, count: 1 }], country: [{ value: 'CA', count: 2 }] } }
@@ -222,7 +240,13 @@ export async function withInvestigation(check) {
         resolve({ code, stdout, stderr, body })
       })
     })
-    await check({ root, calls, run, setMode: value => { mode = value } })
+    const allowFixtureStorage = async () => {
+      const module = join(root, 'node_modules/@knowttl/shodan-axi/dist/bulk.js')
+      const code = await readFile(module, 'utf8')
+      if (!code.includes('export const storageOrigins = Object.freeze([]);')) throw new Error('Storage policy fixture does not match')
+      await writeFile(module, code.replace('export const storageOrigins = Object.freeze([]);', `export const storageOrigins = Object.freeze([${JSON.stringify(origin)}]);`))
+    }
+    await check({ root, calls, run, allowFixtureStorage, setMode: value => { mode = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })

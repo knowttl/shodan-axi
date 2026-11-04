@@ -35,6 +35,13 @@ Each input file is bounded to 1 MiB on disk, including uncompressed files, and g
 `alert stats` uses free count-facet reads, normalizes overlapping networks and labels top-facet results partial.
 Partial statistics saved to a file use a `.partial` suffix.
 Hosted upload and file-based transformations are deferred pending a defined upload boundary.
+`data list` lists datasets; `data list --dataset <name>` lists file metadata without exposing signed URLs.
+Real dataset downloads are disabled pending a reviewed storage-destination policy.
+`download <query>` and `alert download` preview the selected query, destination, size and credit bounds before requiring exact confirmation.
+These native exports require `--allow-operation OP-003`, `--query-credit-budget`, `--max-requests`, `--max-bytes`, `--limit` and `--filename`.
+Exports that stop before all results are saved with a `.partial` suffix.
+`SHODAN_AXI_READ_ONLY=true` refuses execution of exports and dataset transfers.
+Hosted execution refuses chargeable exports and dataset transfers before retrieving credentials.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
 The native `geonet ping`, `geonet geoping`, `geonet dns` and `geonet geodns` commands perform active probes without an API key.
 Ping commands take an IP address; DNS commands take a hostname and accept `--type <record-type>` (default `A`).
@@ -75,7 +82,7 @@ GeoNet contacts `https://geonet.shodan.io` independently of profile configuratio
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B4.1 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B4.2 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.

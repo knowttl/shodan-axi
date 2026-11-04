@@ -1,6 +1,167 @@
 {
   "commands": [
     {
+      "command": "data list",
+      "operation": "OP-034",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--dataset"
+      ],
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "description"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "sha1": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "size"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "command": "data download",
+      "operation": "OP-071",
+      "effect": "read",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--max-bytes",
+        "--max-requests",
+        "--filename",
+        "--resume",
+        "--restart",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "dataset"
+        },
+        {
+          "name": "name"
+        }
+      ]
+    },
+    {
+      "command": "download",
+      "operation": "CLI-005",
+      "effect": "read",
+      "cost": "query",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--max-bytes",
+        "--limit",
+        "--filename",
+        "--fields",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "query"
+        }
+      ]
+    },
+    {
+      "command": "alert download",
+      "operation": "CLI-020",
+      "effect": "read",
+      "cost": "query",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--max-bytes",
+        "--limit",
+        "--filename",
+        "--fields",
+        "--alert-id",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": []
+    },
+    {
       "command": "parse",
       "effect": "local",
       "flags": [
