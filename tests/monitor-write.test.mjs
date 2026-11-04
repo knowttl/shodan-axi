@@ -295,7 +295,7 @@ for (const [mode, status, outcomes, writes] of [
       assert.deepEqual(result.body.steps.map(item => item.operation), ['OP-027', 'OP-013', 'OP-019', 'OP-021', 'OP-023'])
       assert.deepEqual(result.body.steps.map(item => item.status), outcomes)
       assert.equal(calls.filter(call => call.method !== 'GET').length, writes)
-      assert.equal(calls.filter(call => call.path.endsWith('/notifier/notifier-new')).length, writes - 4)
+      assert.equal(calls.filter(call => call.method === 'PUT' && call.path.endsWith('/notifier/notifier-new')).length, writes - 4)
       const journal = (await readFile(join(root, '.local/state/shodan-axi/writes.log'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
       assert.deepEqual(journal.filter(entry => entry.phase === 'result').map(entry => entry.status), outcomes.slice(0, writes))
       assert.doesNotMatch(result.stdout + JSON.stringify(journal), /hidden@example/)
