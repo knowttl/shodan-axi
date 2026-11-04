@@ -26,6 +26,10 @@ For native Trends exports, choose `--save` for a query-derived filename or `--fi
 Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
 Alert and notifier reads and writes are available through the native CLI.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
+The native `geonet ping`, `geonet geoping`, `geonet dns` and `geonet geodns` commands perform active probes without an API key.
+Each requires its exact operation grant and request bound, followed by a protected preview and exact confirmation; observer locations are selected by the service.
+GeoNet results preserve each observer's values without assigning undocumented units.
+Hosted execution refuses these active probes before retrieving credentials.
 Use `scan protocols`, `scan list` and `scan status <id>` to inspect scan capabilities and jobs.
 The status command can poll with `--poll-attempts`, `--poll-interval-ms` and an explicit `--max-requests` bound.
 Scan list pagination is undocumented, so the response indicates whether the returned scope is complete without inventing a page parameter.
@@ -56,7 +60,7 @@ Those reads omit unknown vendor fields, including provider-issued credential fie
 Native commands contact the configured Shodan origin; offline verification uses controlled fakes, and live mutations require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.3 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.4 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.

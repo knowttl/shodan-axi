@@ -14,7 +14,7 @@ for (let index = 0; index < args.length; index++) {
 }
 const paths = typeof options.get('--paths') === 'string' ? options.get('--paths').split(',') : []
 const id = options.get('--id')
-if (!['B1.1', 'B2.1', 'B2.2', 'B3.1', 'B3.2', 'B3.3'].includes(id) || !options.has('--offline') || !paths.length || new Set(paths).size !== paths.length || paths.some(path => !['native', 'artium'].includes(path))) {
+if (!['B1.1', 'B2.1', 'B2.2', 'B3.1', 'B3.2', 'B3.3', 'B3.4'].includes(id) || !options.has('--offline') || !paths.length || new Set(paths).size !== paths.length || paths.some(path => !['native', 'artium'].includes(path))) {
   console.error('Select a supported slice, --offline and at least one valid path')
   process.exit(2)
 }
@@ -26,15 +26,15 @@ for (const path of paths) {
   const tests = []
   if (id === 'B1.1' || options.has('--with-dependencies')) tests.push(...(path === 'native'
     ? ['tests/account.test.mjs', 'tests/credentials.test.mjs', 'tests/private-file.test.mjs', 'tests/interruption.test.mjs'] : ['tests/artium.test.mjs']))
-  if (id === 'B2.1' || (['B2.2', 'B3.1', 'B3.2', 'B3.3'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B2.1' || (['B2.2', 'B3.1', 'B3.2', 'B3.3', 'B3.4'].includes(id) && options.has('--with-dependencies'))) {
     const test = path === 'native' ? 'tests/investigation.test.mjs' : 'tests/artium.test.mjs'
     if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B2.2' || (['B3.1', 'B3.2', 'B3.3'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B2.2' || (['B3.1', 'B3.2', 'B3.3', 'B3.4'].includes(id) && options.has('--with-dependencies'))) {
     const test = path === 'native' ? 'tests/history.test.mjs' : 'tests/artium.test.mjs'
     if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B3.1' || (['B3.2', 'B3.3'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B3.1' || (['B3.2', 'B3.3', 'B3.4'].includes(id) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/monitor-read.test.mjs', 'tests/monitor-write.test.mjs', 'tests/tls.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
   if (id === 'B3.2' || (id === 'B3.3' && options.has('--with-dependencies'))) {
@@ -42,6 +42,9 @@ for (const path of paths) {
   }
   if (id === 'B3.3') {
     for (const test of path === 'native' ? ['tests/scan.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
+  }
+  if (id === 'B3.4') {
+    for (const test of path === 'native' ? ['tests/geonet.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
   if (!tests.length || tests.some(file => !existsSync(file)) || (path === 'artium' && (!process.env.ARTIUM_FIXTURE_ROOT || !process.env.ARTIUM_FIXTURE_MANIFEST))) {
     console.error(`${path}: pending`)

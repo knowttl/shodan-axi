@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { operations } from '../dist/catalogue.js'
+import { probes } from '../dist/geonet.js'
 import { mutations } from '../dist/mutation-catalogue.js'
 import { description, nextSteps } from '../dist/discovery.js'
 import { hostedReadOutputs, statsOutput, homeOutput, doctorOutput } from '../dist/contracts.js'
@@ -7,6 +8,7 @@ import { z } from 'zod'
 
 const target = new URL('../command-inventory.json', import.meta.url)
 const commands = [
+  ...probes.map(({ command, id, argument }) => ({ command, operation: id, effect: 'active', cost: 'none', auth: 'none', flags: ['--json', '--output', '--help', '--allow-operation', '--max-requests', '--execute', '--confirm', ...(argument === 'hostname' ? ['--type'] : [])], arguments: [{ name: argument }] })),
   ...operations.map(({ command, id, effect, cost, flags = [], argument }) => ({ command, operation: id, effect, cost,
     flags: ['--json', '--output', '--help', ...(id === 'OP-059' ? [] : ['--config', '--profile']),
       ...(['OP-039', 'OP-045'].includes(id) ? [] : ['--max-requests', '--max-bytes', '--timeout']),

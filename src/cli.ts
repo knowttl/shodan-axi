@@ -3,13 +3,14 @@ import { homedir } from 'node:os'
 import { configPath, putProfile, readConfig, secret, select } from './credentials.js'
 import { description, nextSteps } from './discovery.js'
 import { ToolError } from './errors.js'
+import { geonet } from './geonet.js'
 import { investigate, planInvestigation } from './investigation.js'
 import { draftClear, draftDomain, draftImport, draftMutation, isMutation, mutate, validateMutationFlags } from './mutations.js'
 import { readPrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { read } from './vendor.js'
 
-const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet'
+const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns'
 const help: Record<string, string> = {
   '': usage,
   info: 'info [--profile <name>] [--config <absolute-path>] [--json] - inspect plan and credits',
@@ -54,6 +55,12 @@ export async function main(args: string[]): Promise<void> {
     if (readOnly && !/^(?:true|false|1|0)$/i.test(readOnly)) throw new ToolError('CONFIG_INVALID', 'Invalid read-only setting', 'Set SHODAN_AXI_READ_ONLY to true or false')
     const option = (flag: string): string | undefined => { const value = flags.get(flag); return typeof value === 'string' ? value : undefined }
     const command = words.join(' ')
+    if (words[0] === 'geonet') {
+      const result = await geonet(words, flags)
+      if (result && typeof result === 'object' && 'error' in result) process.exitCode = 1
+      output(result, json)
+      return
+    }
     if (isMutation(words)) {
       validateMutationFlags(flags)
       if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), effect: 'write', cost: words[0] === 'scan' && words[1] === 'submit' ? 'scan' : 'unknown', help: words[0] === 'scan' ? 'Preview with --allow-operation, --scan-credit-budget and --max-requests; Internet scans also require --accept-unknown-cost. Repeat with --execute --confirm <token>.' : 'Preview with exact --allow-operation, --accept-unknown-cost, --query-credit-budget and --max-requests; repeat the request with --execute --confirm <token>.' }, json); return }
