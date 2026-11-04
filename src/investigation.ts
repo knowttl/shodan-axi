@@ -9,7 +9,7 @@ import { ToolError } from './errors.js'
 import { clean } from './redact.js'
 import { requestJson } from './vendor.js'
 import { windowsAcl } from './windows-acl.js'
-import { scanListItem, scanJob } from './contracts.js'
+import { scanListItem, scanJob, banner, host, count, tokenized, internetdb, protocols, headers, alert, trigger, notifier, providers, organization, directoryQuery, directoryTag, facets as publicFacets } from './contracts.js'
 
 export type Flags = Map<string, string | boolean>
 export type Investigation = { operation: ReadOperation; argument?: string; flags: Flags; maxRequests: number; queryBudget: number; maxPages: number; maxBytes: number; timeout: number }
@@ -83,14 +83,10 @@ export function planInvestigation(words: string[], flags: Flags): Investigation 
 }
 
 const object = z.record(z.string(), z.unknown())
-const banner = z.object({ ip_str: z.string(), port: z.number().int(), transport: z.string(), timestamp: z.string(),
+const searchBanner = z.object({ ip_str: z.string(), port: z.number().int(), transport: z.string(), timestamp: z.string(),
   metadata: z.object({ truncated: z.array(z.string()).optional() }).passthrough().optional() }).passthrough()
-const host = z.object({ ip_str: z.string(), ports: z.array(z.number().int()), data: z.array(banner) }).passthrough()
-const search = z.object({ total: z.number().int().nonnegative(), matches: z.array(banner) }).passthrough()
-const count = z.object({ total: z.number().int().nonnegative(), facets: object.optional() }).passthrough()
+const search = z.object({ total: z.number().int().nonnegative(), matches: z.array(searchBanner) }).passthrough()
 const domain = z.object({ domain: z.string(), data: z.array(z.object({ type: z.string(), value: z.string() }).passthrough()), more: z.boolean() }).passthrough()
-const tokenized = z.object({ attributes: object, errors: z.array(z.unknown()), string: z.string(), filters: z.array(z.string()) }).passthrough()
-const internetdb = z.object({ ip: z.string(), ports: z.array(z.number().int()), cpes: z.array(z.string()), hostnames: z.array(z.string()), tags: z.array(z.string()), vulns: z.array(z.string()) }).passthrough()
 
 function parse<T>(schema: z.ZodType<T>, raw: unknown): T {
   const result = schema.safeParse(raw)
@@ -195,7 +191,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
     }
   }
   const raw = await dispatch(path, query, operation.cost !== 'none')
-  if (operation.id === 'OP-008') return parse(z.record(z.string(), z.string()), raw)
+  if (operation.id === 'OP-008') return parse(protocols, raw)
   if (operation.id === 'OP-011') {
     const result = parse(z.object({ matches: z.array(scanListItem), total: z.number().int().nonnegative() }), raw)
     return { items: result.matches, total: result.total, pagination: 'undocumented', complete: result.matches.length >= result.total }
@@ -219,36 +215,36 @@ export async function investigate(plan: Investigation, origin: string | undefine
     return { ...result, polling: ['DONE', 'FAILED', 'CANCELLED'].includes(result.status.toUpperCase()) ? 'complete' : 'attempt-limit' }
   }
   if (operation.id === 'OP-036') {
-    const member = z.object({ username: z.string(), email: z.string() })
-    return parse(z.object({ id: z.string(), name: z.string(), created: z.string().optional(), admins: z.array(member), members: z.array(member), upgrade_type: z.string().optional(), domains: z.array(z.string()), logo: z.boolean() }), raw)
+    return parse(organization, raw)
   }
   if (operation.id === 'OP-014') {
-    const result = parse(z.object({ id: z.string(), name: z.string(), filters: z.object({ ip: z.array(z.string()) }).passthrough() }).passthrough(), raw)
+    const result = parse(alert, raw)
     if (result.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Alert does not match the selection', 'Retry the selected alert')
-    return Object.fromEntries(Object.entries(result).filter(([name]) => name !== 'notify'))
+    return result
   }
-  if (operation.id === 'OP-017' || operation.id === 'OP-018') {
-    const schema = operation.id === 'OP-017' ? z.object({ id: z.string(), name: z.string(), filters: z.object({ ip: z.array(z.string()) }).passthrough(), expiration: z.string().nullable().optional() }).passthrough()
-      : z.object({ name: z.string(), rule: z.string(), description: z.string() }).passthrough()
-    const rows = parse(z.array(schema), raw)
+  if (operation.id === 'OP-018') {
+    const items = parse(z.array(trigger), raw)
+    return { items, count: items.length }
+  }
+  if (operation.id === 'OP-017') {
+    const rows = parse(z.array(alert), raw)
     const expired = value(flags, '--expired') !== 'false'
-    const items = operation.id === 'OP-017' && !expired ? rows.filter(row => row.expiration === null || (typeof row.expiration === 'string' && Date.parse(row.expiration) > Date.now())) : rows
-    return { items: operation.id === 'OP-017' ? items.map(item => Object.fromEntries(Object.entries(item).filter(([name]) => name !== 'notify'))) : items, count: items.length }
+    const items = !expired ? rows.filter(row => row.expiration === null || (typeof row.expiration === 'string' && Date.parse(row.expiration) > Date.now())) : rows
+    return { items, count: items.length }
   }
   if (operation.id === 'OP-025') {
-    const result = parse(z.object({ matches: z.array(z.object({ id: z.string(), provider: z.string() }).passthrough()), total: z.number().int().nonnegative() }).passthrough(), raw)
-    return { items: result.matches.map(item => ({ id: item.id, provider: item.provider, ...(typeof item.description === 'string' ? { description: item.description } : {}) })), total: result.total, count: result.matches.length }
+    const result = parse(z.object({ matches: z.array(notifier), total: z.number().int().nonnegative() }), raw)
+    return { items: result.matches, total: result.total, count: result.matches.length }
   }
-  if (operation.id === 'OP-026') return parse(z.record(z.string(), z.object({ required: z.array(z.string()) }).passthrough()), raw)
+  if (operation.id === 'OP-026') return parse(providers, raw)
   if (operation.id === 'OP-029') {
-    const result = parse(z.object({ id: z.string(), provider: z.string() }).passthrough(), raw)
+    const result = parse(notifier, raw)
     if (result.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Notifier does not match the selection', 'Retry the selected notifier')
-    return { id: result.id, provider: result.provider, ...(typeof result.description === 'string' ? { description: result.description } : {}) }
+    return result
   }
   if (['OP-031', 'OP-032', 'OP-033'].includes(operation.id)) {
-    const item = operation.id === 'OP-033' ? z.object({ value: z.string(), count: z.number().int().nonnegative() }).passthrough()
-      : z.object({ title: z.string(), query: z.string() }).passthrough()
-    const result = parse(z.object({ matches: z.array(item), total: z.number().int().nonnegative() }).passthrough(), raw)
+    const item = operation.id === 'OP-033' ? directoryTag : directoryQuery
+    const result = parse(z.object({ matches: z.array(item), total: z.number().int().nonnegative() }), raw)
     const complete = page === 1 && result.matches.length >= result.total
     return { items: result.matches, count: result.matches.length, total: result.total, ...(operation.id === 'OP-033' ? {} : { page }), complete }
   }
@@ -281,9 +277,12 @@ export async function investigate(plan: Investigation, origin: string | undefine
     return { items, count: items.length, total: result.total, page, facets: result.facets ?? {}, sourceFamily: 'exploits', ...(truncations.length ? { truncations, help: 'Use --full to include complete text within the byte limit' } : {}) }
   }
   if (operation.id === 'OP-001') {
-    const result = parse(query.minify === 'true' ? host.extend({ data: z.array(banner).default([]) }) : host, raw)
+    const response = parse(host.extend({ data: query.minify === 'true'
+      ? z.array(banner.extend({ placeholder: z.boolean().optional() })).default([])
+      : z.array(banner.extend({ placeholder: z.boolean().optional() })) }), raw)
+    const result = parse(host, response)
     if (!sameAddress(result.ip_str, argument)) throw new ToolError('INVALID_RESPONSE', 'Host response does not match the selected address', 'Retry the selected address')
-    const saved = await save(plan, result.data.filter(row => !Object.hasOwn(row, 'placeholder')), key ?? '\u0000')
+    const saved = await save(plan, parse(host, { ...response, data: response.data.filter(row => !Object.hasOwn(row, 'placeholder')) }).data, key ?? '\u0000')
     const vendorTruncations = [...new Set(result.data.flatMap(row => row.metadata?.truncated ?? []))]
     const format = value(flags, '--format')
     const display = format === 'tsv' ? result.data.map(row => [row.ip_str, row.port, row.transport, row.timestamp].join('\t')).join('\n')
@@ -295,8 +294,8 @@ export async function investigate(plan: Investigation, origin: string | undefine
   if (operation.id === 'OP-002') {
     const result = parse(count, raw)
     if (operation.command !== 'stats') return result
-    const facets = parse(z.record(z.string(), z.array(z.object({ value: z.union([z.string(), z.number()]), count: z.number().int().nonnegative() }).passthrough())), result.facets ?? {})
-    const buckets = Object.entries(facets).flatMap(([facet, rows]) => rows.slice(0, limit).map(row => ({ facet, ...row })))
+    const facets = parse(publicFacets, result.facets ?? {})
+    const buckets = Object.entries(facets).flatMap(([facet, rows]) => (rows ?? []).slice(0, limit).map(row => ({ facet, ...row })))
     const filename = value(flags, '--filename')
     let saved
     if (filename) {
@@ -423,15 +422,14 @@ export async function investigate(plan: Investigation, origin: string | undefine
   if (operation.id === 'OP-007') { const items = parse(z.array(z.number().int()), raw); return { items, count: items.length } }
   if (operation.id === 'OP-006') return parse(tokenized, raw)
   if (operation.id === 'OP-041') {
-    const result = parse(z.record(z.string(), z.string().nullable()), raw)
+    const result = parse(z.object(Object.fromEntries((argument ?? '').split(',').map(name => [name, z.string().nullable().optional()]))), raw)
     return Object.fromEntries((argument ?? '').split(',').map(name => [name, result[name] ?? null]))
   }
   if (operation.id === 'OP-042') {
-    const result = parse(z.record(z.string(), z.array(z.string())), raw)
+    const result = parse(z.object(Object.fromEntries((argument ?? '').split(',').map(ip => [ip, z.array(z.string()).nullable().optional()]))), raw)
     return Object.fromEntries((argument ?? '').split(',').map(ip => [ip, result[ip] ?? null]))
   }
-  if (operation.id === 'OP-043') return Object.fromEntries(Object.entries(parse(z.record(z.string(), z.string()), raw))
-    .map(([header, content]) => [header, /^(?:proxy-)?authorization$/i.test(header) ? '[REDACTED]' : content]))
+  if (operation.id === 'OP-043') return parse(headers, raw)
   if (operation.id === 'OP-044' || operation.id === 'OP-072') {
     const address = parse(z.string(), raw)
     const family = operation.id === 'OP-072' ? 6 : 4

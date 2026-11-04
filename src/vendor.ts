@@ -1,9 +1,6 @@
 import { request } from 'node:https'
-import { z } from 'zod'
 import { ToolError } from './errors.js'
-
-const info = z.object({ plan: z.string(), query_credits: z.number(), scan_credits: z.number(), monitored_ips: z.number(), usage_limits: z.object({ query_credits: z.number(), scan_credits: z.number(), monitored_ips: z.number() }).passthrough() }).passthrough()
-const account = z.object({ member: z.boolean(), credits: z.number(), display_name: z.string().nullable(), created: z.string() }).passthrough()
+import { info, account } from './contracts.js'
 
 export async function requestJson(origin: string, path: string, key: string | undefined, query: Readonly<Record<string, string>> = {}, maxBytes = 10 * 1024 * 1024, timeout = 30000, allowText = false, family?: 4 | 6, mutation?: { method: 'POST' | 'PUT' | 'DELETE'; body?: string; contentType?: string }): Promise<unknown> {
   const url = new URL(path, origin)

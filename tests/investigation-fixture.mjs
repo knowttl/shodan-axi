@@ -15,6 +15,11 @@ export async function withInvestigation(check) {
     const { keyFile, certFile } = await createTestTls(root, 'IP:127.0.0.1')
     const calls = []
     let mode = 'normal'
+    const inject = value => {
+      if (mode !== 'hosted-injection' || value === null || typeof value !== 'object') return value
+      if (Array.isArray(value)) return value.map(inject)
+      return { ...Object.fromEntries(Object.entries(value).map(([name, item]) => [name, inject(item)])), unknown_vendor: 'injected-private', access_token: 'injected-private' }
+    }
     const alerts = new Map([['alert-a', { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null }]])
     const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } }]])
     const organization = { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }, { username: 'other', email: 'other@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' }
@@ -109,7 +114,7 @@ export async function withInvestigation(check) {
           'alert-expiration-too-long': { expiration: new Date(Date.now() + 120000).toISOString() },
           'alert-expiration-missing': { expiration: undefined },
         }
-        response.end(JSON.stringify({ ...selected, ...changes[mode] })); return
+        response.end(JSON.stringify(inject({ ...selected, ...changes[mode] }))); return
       }
       const notifierInfo = /^\/notifier\/([^/]+)$/.exec(url.pathname)
       if (notifierInfo && notifierInfo[1] !== 'provider') {
@@ -121,7 +126,7 @@ export async function withInvestigation(check) {
           'notifier-args-mismatch': { args: { to: 'other@example.test' } },
           'notifier-args-missing': { args: undefined },
         }
-        response.end(JSON.stringify({ ...selected, ...changes[mode] })); return
+        response.end(JSON.stringify(inject({ ...selected, ...changes[mode] }))); return
       }
       if (['/shodan/host/192.0.2.8', '/shodan/host/2001%3Adb8%3A%3A8'].includes(url.pathname)) {
         response.writeHead(mode === 'domain-enrichment-denied' ? 403 : 404)
@@ -162,6 +167,7 @@ export async function withInvestigation(check) {
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
       }
+      if (mode === 'bad-protocol') values['/shodan/protocols'].https = { description: 'invalid' }
       response.setHeader('content-type', 'application/json')
       const errorStatus = { 'trickle-404': 404, 'trickle-429': 429, 'trickle-503': 503 }[mode]
         ?? (mode === 'trickle-enrichment' && url.pathname.startsWith('/shodan/host/') ? 404 : undefined)
@@ -177,7 +183,7 @@ export async function withInvestigation(check) {
         response.on('close', () => { clearInterval(timer) })
         return
       }
-      response.end(JSON.stringify(values[url.pathname]))
+      response.end(JSON.stringify(inject(values[url.pathname])))
     })
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const origin = `https://127.0.0.1:${server.address().port}`

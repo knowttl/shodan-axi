@@ -12,7 +12,39 @@
         "--config",
         "--profile"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "member": {
+            "type": "boolean"
+          },
+          "credits": {
+            "type": "number"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "member",
+          "credits",
+          "display_name",
+          "created"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "info",
@@ -26,7 +58,53 @@
         "--config",
         "--profile"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "plan": {
+            "type": "string"
+          },
+          "query_credits": {
+            "type": "number"
+          },
+          "scan_credits": {
+            "type": "number"
+          },
+          "monitored_ips": {
+            "type": "number"
+          },
+          "usage_limits": {
+            "type": "object",
+            "properties": {
+              "query_credits": {
+                "type": "number"
+              },
+              "scan_credits": {
+                "type": "number"
+              },
+              "monitored_ips": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "query_credits",
+              "scan_credits",
+              "monitored_ips"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "plan",
+          "query_credits",
+          "scan_credits",
+          "monitored_ips",
+          "usage_limits"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "host",
@@ -52,7 +130,469 @@
         {
           "name": "ip"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "host": {
+            "type": "object",
+            "properties": {
+              "ip_str": {
+                "type": "string"
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "ip_str": {
+                      "type": "string"
+                    },
+                    "port": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "transport": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "string"
+                    },
+                    "hostnames": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "domains": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "org": {
+                      "type": "string"
+                    },
+                    "isp": {
+                      "type": "string"
+                    },
+                    "asn": {
+                      "type": "string"
+                    },
+                    "product": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "location": {
+                      "type": "object",
+                      "properties": {
+                        "country_code": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "country_name": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "city": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "latitude": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "longitude": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "ssl": {
+                      "type": "object",
+                      "properties": {
+                        "cert": {
+                          "type": "object",
+                          "properties": {
+                            "pubkey": {
+                              "type": "object",
+                              "properties": {
+                                "bits": {
+                                  "type": "number"
+                                },
+                                "type": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "bits",
+                                "type"
+                              ],
+                              "additionalProperties": false
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "truncated": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "ip_str",
+                    "port",
+                    "transport",
+                    "timestamp"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "hostnames": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "org": {
+                "type": "string"
+              },
+              "isp": {
+                "type": "string"
+              },
+              "asn": {
+                "type": "string"
+              },
+              "last_update": {
+                "type": "string"
+              },
+              "country_code": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "country_name": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "city": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "latitude": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "longitude": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "ip_str",
+              "ports",
+              "data"
+            ],
+            "additionalProperties": false
+          },
+          "banners": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ip_str": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "transport": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "string"
+                },
+                "hostnames": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "domains": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "org": {
+                  "type": "string"
+                },
+                "isp": {
+                  "type": "string"
+                },
+                "asn": {
+                  "type": "string"
+                },
+                "product": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "location": {
+                  "type": "object",
+                  "properties": {
+                    "country_code": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "country_name": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "city": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "latitude": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "longitude": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "ssl": {
+                  "type": "object",
+                  "properties": {
+                    "cert": {
+                      "type": "object",
+                      "properties": {
+                        "pubkey": {
+                          "type": "object",
+                          "properties": {
+                            "bits": {
+                              "type": "number"
+                            },
+                            "type": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "bits",
+                            "type"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "metadata": {
+                  "type": "object",
+                  "properties": {
+                    "truncated": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "ip_str",
+                "port",
+                "transport",
+                "timestamp"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "historyRequested": {
+            "type": "boolean"
+          },
+          "vendorTruncations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "fullHistoricalPayload": {
+            "type": "boolean",
+            "const": false
+          },
+          "display": {
+            "type": "string"
+          },
+          "saved": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "appendedBytes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "appendedSha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "appendedBytes",
+              "appendedSha256"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "host",
+          "banners",
+          "historyRequested"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "count",
@@ -74,7 +614,588 @@
         {
           "name": "query"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "facets": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "country": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "country_name": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "city": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "org": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "asn": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "isp": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "os": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "product": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "version": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "http.title": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "http.component": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ssl.version": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ssl.cert.subject.cn": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ssl.cert.pubkey.bits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "key": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "vuln": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "vuln.verified": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "tag": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "total"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "stats",
@@ -98,7 +1219,650 @@
         {
           "name": "query"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "facets": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "country": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "country_name": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "city": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "org": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "asn": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "domain": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "isp": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "os": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "product": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "version": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "http.title": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "http.component": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ssl.version": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ssl.cert.subject.cn": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "ssl.cert.pubkey.bits": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "key": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "vuln": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "vuln.verified": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "tag": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "count"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "facet": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "count",
+                "facet"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "saved": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "appendedBytes": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "appendedSha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "appendedBytes",
+              "appendedSha256"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "total",
+          "facets",
+          "buckets",
+          "count"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "search",
@@ -148,7 +1912,29 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "search filters",
@@ -165,7 +1951,29 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "search tokens",
@@ -186,7 +1994,77 @@
         {
           "name": "query"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "properties": {
+              "ports": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "hostnames": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ips": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "countries": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "asns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "string": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "attributes",
+          "errors",
+          "string",
+          "filters"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "ports",
@@ -203,7 +2081,31 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "scan protocols",
@@ -220,7 +2122,281 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "afp": {
+            "type": "string"
+          },
+          "ajp": {
+            "type": "string"
+          },
+          "amqp": {
+            "type": "string"
+          },
+          "andromouse": {
+            "type": "string"
+          },
+          "apple-airport-admin": {
+            "type": "string"
+          },
+          "ard": {
+            "type": "string"
+          },
+          "bacnet": {
+            "type": "string"
+          },
+          "bgp": {
+            "type": "string"
+          },
+          "cassandra": {
+            "type": "string"
+          },
+          "checkpoint": {
+            "type": "string"
+          },
+          "coap": {
+            "type": "string"
+          },
+          "codesys": {
+            "type": "string"
+          },
+          "couchdb": {
+            "type": "string"
+          },
+          "dahua-dvr": {
+            "type": "string"
+          },
+          "db2": {
+            "type": "string"
+          },
+          "dnp3": {
+            "type": "string"
+          },
+          "dns-udp": {
+            "type": "string"
+          },
+          "docker": {
+            "type": "string"
+          },
+          "elasticsearch": {
+            "type": "string"
+          },
+          "epmd": {
+            "type": "string"
+          },
+          "ethernetip": {
+            "type": "string"
+          },
+          "fox": {
+            "type": "string"
+          },
+          "ftp": {
+            "type": "string"
+          },
+          "ftp-ssl": {
+            "type": "string"
+          },
+          "gopher": {
+            "type": "string"
+          },
+          "hart-ip": {
+            "type": "string"
+          },
+          "hbase": {
+            "type": "string"
+          },
+          "http": {
+            "type": "string"
+          },
+          "http-simple-new": {
+            "type": "string"
+          },
+          "https": {
+            "type": "string"
+          },
+          "https-simple-new": {
+            "type": "string"
+          },
+          "icap": {
+            "type": "string"
+          },
+          "iec-104": {
+            "type": "string"
+          },
+          "ike": {
+            "type": "string"
+          },
+          "imap": {
+            "type": "string"
+          },
+          "imap-ssl": {
+            "type": "string"
+          },
+          "ipmi": {
+            "type": "string"
+          },
+          "ipp": {
+            "type": "string"
+          },
+          "iscsi": {
+            "type": "string"
+          },
+          "knx": {
+            "type": "string"
+          },
+          "ldap": {
+            "type": "string"
+          },
+          "ldap-ssl": {
+            "type": "string"
+          },
+          "memcached": {
+            "type": "string"
+          },
+          "mikrotik-routeros": {
+            "type": "string"
+          },
+          "modbus": {
+            "type": "string"
+          },
+          "mongodb": {
+            "type": "string"
+          },
+          "mqtt": {
+            "type": "string"
+          },
+          "ms-sql": {
+            "type": "string"
+          },
+          "mysql": {
+            "type": "string"
+          },
+          "netbios": {
+            "type": "string"
+          },
+          "nntp": {
+            "type": "string"
+          },
+          "ntp": {
+            "type": "string"
+          },
+          "opc-ua": {
+            "type": "string"
+          },
+          "openvpn": {
+            "type": "string"
+          },
+          "oracle": {
+            "type": "string"
+          },
+          "pcworx": {
+            "type": "string"
+          },
+          "pop3": {
+            "type": "string"
+          },
+          "pop3-ssl": {
+            "type": "string"
+          },
+          "postgresql": {
+            "type": "string"
+          },
+          "pptp": {
+            "type": "string"
+          },
+          "qconn": {
+            "type": "string"
+          },
+          "rdp": {
+            "type": "string"
+          },
+          "redis": {
+            "type": "string"
+          },
+          "rethinkdb": {
+            "type": "string"
+          },
+          "rlogin": {
+            "type": "string"
+          },
+          "rsync": {
+            "type": "string"
+          },
+          "rtsp": {
+            "type": "string"
+          },
+          "s7": {
+            "type": "string"
+          },
+          "samsung-dvr": {
+            "type": "string"
+          },
+          "sip": {
+            "type": "string"
+          },
+          "smb": {
+            "type": "string"
+          },
+          "smtp": {
+            "type": "string"
+          },
+          "smtp-ssl": {
+            "type": "string"
+          },
+          "snmp": {
+            "type": "string"
+          },
+          "socks": {
+            "type": "string"
+          },
+          "ssh": {
+            "type": "string"
+          },
+          "steam-a2s": {
+            "type": "string"
+          },
+          "telnet": {
+            "type": "string"
+          },
+          "tftp": {
+            "type": "string"
+          },
+          "tls": {
+            "type": "string"
+          },
+          "tor-requests": {
+            "type": "string"
+          },
+          "ubiquiti-discover": {
+            "type": "string"
+          },
+          "upnp": {
+            "type": "string"
+          },
+          "ventrilo": {
+            "type": "string"
+          },
+          "vnc": {
+            "type": "string"
+          },
+          "weblogic-t3": {
+            "type": "string"
+          },
+          "ws-discovery": {
+            "type": "string"
+          },
+          "x11": {
+            "type": "string"
+          },
+          "zookeeper": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     },
     {
       "command": "scan list",
@@ -406,7 +2582,25 @@
         {
           "name": "names"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "propertyNames": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9-]+(?:\\.[a-zA-Z0-9-]+)*$"
+        },
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     },
     {
       "command": "dns reverse",
@@ -427,7 +2621,28 @@
         {
           "name": "ips"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "propertyNames": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F:.]+$"
+        },
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     },
     {
       "command": "tools headers",
@@ -444,7 +2659,44 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "Accept": {
+            "type": "string"
+          },
+          "Accept-Encoding": {
+            "type": "string"
+          },
+          "Accept-Language": {
+            "type": "string"
+          },
+          "Connection": {
+            "type": "string"
+          },
+          "Host": {
+            "type": "string"
+          },
+          "User-Agent": {
+            "type": "string"
+          },
+          "Via": {
+            "type": "string"
+          },
+          "X-Forwarded-For": {
+            "type": "string"
+          },
+          "X-Forwarded-Proto": {
+            "type": "string"
+          },
+          "X-Real-IP": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
     },
     {
       "command": "myip",
@@ -462,7 +2714,38 @@
         "--timeout",
         "--ipv6"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "addressFamily": {
+            "anyOf": [
+              {
+                "type": "number",
+                "const": 4
+              },
+              {
+                "type": "number",
+                "const": 6
+              }
+            ]
+          },
+          "attribution": {
+            "type": "string",
+            "const": "egress address of execution location"
+          }
+        },
+        "required": [
+          "ip",
+          "addressFamily",
+          "attribution"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "internetdb host",
@@ -481,7 +2764,57 @@
         {
           "name": "ip"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "ports": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "cpes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "hostnames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vulns": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ip",
+          "ports",
+          "cpes",
+          "hostnames",
+          "tags",
+          "vulns"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "honeyscore",
@@ -545,7 +2878,73 @@
         "--sort",
         "--order"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "votes": {
+                  "type": "number"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "title",
+                "query"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "total",
+          "page",
+          "complete"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "query search",
@@ -567,7 +2966,73 @@
         {
           "name": "query"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "query": {
+                  "type": "string"
+                },
+                "votes": {
+                  "type": "number"
+                },
+                "description": {
+                  "type": "string"
+                },
+                "timestamp": {
+                  "type": "string"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "title",
+                "query"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "page": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "total",
+          "page",
+          "complete"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "query tags",
@@ -585,7 +3050,54 @@
         "--timeout",
         "--size"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "value": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "value",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "count",
+          "total",
+          "complete"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "trends",
@@ -629,7 +3141,28 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceFamily": {
+            "type": "string",
+            "const": "trends"
+          }
+        },
+        "required": [
+          "items",
+          "sourceFamily"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "trends facets",
@@ -646,7 +3179,28 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sourceFamily": {
+            "type": "string",
+            "const": "trends"
+          }
+        },
+        "required": [
+          "items",
+          "sourceFamily"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "exploits search",
@@ -719,7 +3273,128 @@
         {
           "name": "id"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "object",
+            "properties": {
+              "ip": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "ip"
+            ],
+            "additionalProperties": false
+          },
+          "created": {
+            "type": "string"
+          },
+          "expiration": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "size": {
+            "type": "number"
+          },
+          "notifiers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "triggers": {
+            "type": "object",
+            "properties": {
+              "any": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "new_service": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "open_database": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "industrial_control_system": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "vulnerable": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "malware": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "ssl_expired": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "ssl_self_signed": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "uncommon": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "uncommon_plus": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "vulnerable_unverified": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              },
+              "internet_scanner": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "filters"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "alert list",
@@ -737,7 +3412,146 @@
         "--timeout",
         "--expired"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "filters": {
+                  "type": "object",
+                  "properties": {
+                    "ip": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "ip"
+                  ],
+                  "additionalProperties": false
+                },
+                "created": {
+                  "type": "string"
+                },
+                "expiration": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "size": {
+                  "type": "number"
+                },
+                "notifiers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "triggers": {
+                  "type": "object",
+                  "properties": {
+                    "any": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "new_service": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "open_database": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "industrial_control_system": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "vulnerable": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "malware": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "ssl_expired": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "ssl_self_signed": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "uncommon": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "uncommon_plus": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "vulnerable_unverified": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    },
+                    "internet_scanner": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "filters"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "alert triggers",
@@ -754,7 +3568,46 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "rule": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "rule",
+                "description"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "count"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "notifier list",
@@ -771,7 +3624,51 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "description": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "provider"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "count"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "notifier providers",
@@ -788,7 +3685,158 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          },
+          "telegram": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          },
+          "webhook": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          },
+          "slack": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          },
+          "gitter": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          },
+          "pagerduty": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          },
+          "phone": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          },
+          "pushover": {
+            "type": "object",
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "required"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
     },
     {
       "command": "notifier get",
@@ -809,7 +3857,27 @@
         {
           "name": "id"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "provider"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "org info",
@@ -826,7 +3894,81 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created": {
+            "type": "string"
+          },
+          "admins": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "username": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "username",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "username": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "username",
+                "email"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "upgrade_type": {
+            "type": "string"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "logo": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "admins",
+          "members",
+          "domains",
+          "logo"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "myip --ipv6",
@@ -843,7 +3985,38 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "ip": {
+            "type": "string"
+          },
+          "addressFamily": {
+            "anyOf": [
+              {
+                "type": "number",
+                "const": 4
+              },
+              {
+                "type": "number",
+                "const": 6
+              }
+            ]
+          },
+          "attribution": {
+            "type": "string",
+            "const": "egress address of execution location"
+          }
+        },
+        "required": [
+          "ip",
+          "addressFamily",
+          "attribution"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "scan submit",
@@ -1374,7 +4547,77 @@
         "--config",
         "--profile"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "bin": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "account": {
+            "type": "object",
+            "properties": {
+              "plan": {
+                "type": "string"
+              },
+              "query_credits": {
+                "type": "number"
+              },
+              "scan_credits": {
+                "type": "number"
+              },
+              "monitored_ips": {
+                "type": "number"
+              },
+              "usage_limits": {
+                "type": "object",
+                "properties": {
+                  "query_credits": {
+                    "type": "number"
+                  },
+                  "scan_credits": {
+                    "type": "number"
+                  },
+                  "monitored_ips": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "query_credits",
+                  "scan_credits",
+                  "monitored_ips"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "plan",
+              "query_credits",
+              "scan_credits",
+              "monitored_ips",
+              "usage_limits"
+            ],
+            "additionalProperties": false
+          },
+          "help": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "bin",
+          "description",
+          "account",
+          "help"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "doctor",
@@ -1386,7 +4629,67 @@
         "--config",
         "--profile"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "account": {
+            "type": "object",
+            "properties": {
+              "plan": {
+                "type": "string"
+              },
+              "query_credits": {
+                "type": "number"
+              },
+              "scan_credits": {
+                "type": "number"
+              },
+              "monitored_ips": {
+                "type": "number"
+              },
+              "usage_limits": {
+                "type": "object",
+                "properties": {
+                  "query_credits": {
+                    "type": "number"
+                  },
+                  "scan_credits": {
+                    "type": "number"
+                  },
+                  "monitored_ips": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "query_credits",
+                  "scan_credits",
+                  "monitored_ips"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "plan",
+              "query_credits",
+              "scan_credits",
+              "monitored_ips",
+              "usage_limits"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "status",
+          "account"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "auth status",
