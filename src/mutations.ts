@@ -315,7 +315,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
             for (const [name, expected] of new URLSearchParams(step.body)) {
               const actual = name === 'provider' || name === 'description' ? observed.data[name] : args.success ? args.data[name] : undefined
               if (actual === undefined) complete = false
-              else if (!['string', 'number', 'boolean'].includes(typeof actual) || String(actual) !== expected) matches = false
+              else if ((typeof actual !== 'string' && typeof actual !== 'number' && typeof actual !== 'boolean') || String(actual) !== expected) matches = false
             }
             if (matches) readback = complete ? 'verified' : 'acknowledged-unverified'
           }
