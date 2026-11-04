@@ -673,8 +673,7 @@
         "--profile",
         "--max-requests",
         "--max-bytes",
-        "--timeout",
-        "--credential-file"
+        "--timeout"
       ],
       "arguments": []
     },
