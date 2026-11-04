@@ -192,7 +192,7 @@ export async function draftImport(words: string[], flags: Flags): Promise<Draft>
   const notifier = z.object({ id: z.string(), provider: z.string().optional(), description: z.string().optional(), args: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional() }).passthrough()
   const ignored = z.union([z.string(), z.object({ ip: z.string(), port: z.number().int().min(1).max(65535) }).passthrough()])
   const schema = z.array(z.object({ name: z.string().min(1).max(200), filters: z.object({ ip: z.array(z.string()).min(1) }).passthrough(), triggers: z.record(z.string(), z.object({ ignore: z.array(ignored).optional() }).passthrough()).default({}), notifiers: z.array(notifier).default([]) }).passthrough()).max(100)
-  const parsed = schema.safeParse(raw)
+  const parsed = schema.safeParse(Array.isArray(raw) ? raw : [raw])
   if (!parsed.success) return bad('Invalid alert import')
   const steps: Step[] = []; const notifiers = new Map<string, { alias: string; definition: string }>()
   for (const alert of parsed.data) for (const entry of alert.notifiers) {
@@ -275,6 +275,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
     const step = { ...original, path: resolve(original.path, true), target: ['OP-013', 'OP-027'].includes(original.operation) ? original.target : resolve(original.target, false), readback: resolve(original.readback, true) }
     await appendPrivate(log, `${JSON.stringify(clean({ token, operation: step.operation, target: step.target, phase: 'intent', at: Date.now() }, key))}\n`)
     try {
+      const sentAt = Date.now()
       const response = await requestJson(selection.profile.origin, step.path, key, {}, 1024 * 1024, 30000, false, undefined, { method: step.method, ...(step.body === undefined ? {} : { body: step.body }), ...(step.contentType === undefined ? {} : { contentType: step.contentType }) })
       const parsed = record.safeParse(response)
       if (!parsed.success || (Object.hasOwn(parsed.data, 'success') && parsed.data.success !== true) || Object.hasOwn(parsed.data, 'error')) throw new Error('invalid acknowledgement')
@@ -292,7 +293,14 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
         if (observed.success) {
           if (step.operation === 'OP-013' || step.operation === 'OP-016') {
             const expected = record.safeParse(step.body ? JSON.parse(step.body) : {})
-            if (expected.success && observed.data.id === (createdId ?? step.target) && JSON.stringify(observed.data.filters) === JSON.stringify(expected.data.filters)) readback = 'verified'
+            if (expected.success && observed.data.id === (createdId ?? step.target) && JSON.stringify(observed.data.filters) === JSON.stringify(expected.data.filters)) {
+              if (step.operation === 'OP-016') readback = 'verified'
+              else if (observed.data.name === expected.data.name && typeof expected.data.expires === 'number') {
+                const expiration = typeof observed.data.expiration === 'string' ? Date.parse(observed.data.expiration) : NaN
+                if (observed.data.expiration === undefined) readback = 'acknowledged-unverified'
+                else if (expected.data.expires === 0 ? observed.data.expiration === null : expiration >= sentAt + expected.data.expires * 1000 - 1000 && expiration <= Date.now() + expected.data.expires * 1000) readback = 'verified'
+              }
+            }
           } else if (step.operation === 'OP-019' || step.operation === 'OP-020') {
             const triggers = record.safeParse(observed.data.triggers)
             const trigger = step.target.split(':')[1] ?? ''
@@ -301,10 +309,19 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
             const notifier = step.target.split(':')[1] ?? ''
             const attached = z.array(z.union([z.string(), z.object({ id: z.string() }).passthrough()])).safeParse(observed.data.notifiers)
             if (observed.data.id === step.target.split(':')[0] && attached.success && attached.data.some(entry => (typeof entry === 'string' ? entry : entry.id) === notifier) === (step.operation === 'OP-023')) readback = 'verified'
-          } else if (step.operation === 'OP-027' && observed.data.id === createdId) readback = 'verified'
+          } else if (step.operation === 'OP-027' && observed.data.id === createdId) {
+            const args = record.safeParse(observed.data.args)
+            let matches = true; let complete = true
+            for (const [name, expected] of new URLSearchParams(step.body)) {
+              const actual = name === 'provider' || name === 'description' ? observed.data[name] : args.success ? args.data[name] : undefined
+              if (actual === undefined) complete = false
+              else if (!['string', 'number', 'boolean'].includes(typeof actual) || String(actual) !== expected) matches = false
+            }
+            if (matches) readback = complete ? 'verified' : 'acknowledged-unverified'
+          }
         }
       } catch (error) { if (error instanceof ToolError && error.code === 'NOT_FOUND' && ['OP-015', 'OP-028'].includes(step.operation)) readback = 'verified-absent' }
-      const status = !hasReadback ? 'acknowledged-unverified' : readback === 'unverified' ? 'failed' : 'verified'
+      const status = !hasReadback || readback === 'acknowledged-unverified' ? 'acknowledged-unverified' : readback === 'unverified' ? 'failed' : 'verified'
       const outcome = { operation: step.operation, target: step.target, status, acknowledged: true, ...(createdId ? { id: createdId } : {}), readback }
       results.push(outcome)
       await appendPrivate(log, `${JSON.stringify(clean({ token, ...outcome, phase: 'result', at: Date.now() }, key))}\n`)

@@ -7,6 +7,73 @@ import { withInvestigation } from './investigation-fixture.mjs'
 
 const permit = ['--allow-operation', 'OP-015', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3']
 
+for (const [suffix, encode] of [['jsonl', value => value], ['jsonl.gz', value => gzipSync(value)]]) {
+  test(`single-record ${suffix} imports preview and execute`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ root, run, calls }) => {
+      const path = join(root, `import.${suffix}`)
+      const input = { name: 'Imported', filters: { ip: ['192.0.2.9'] } }
+      await writeFile(path, encode(`${JSON.stringify(input)}\n`), { mode: 0o600 })
+      const args = ['alert', 'import', path, '--allow-operation', 'OP-013', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '4']
+      const preview = await run(args)
+      assert.equal(preview.body.status, 'preview')
+      assert.deepEqual(preview.body.effects.map(item => item.operation), ['OP-013'])
+      const result = await run([...args, '--execute', '--confirm', preview.body.token])
+      assert.equal(result.body.status, 'completed')
+      assert.deepEqual(result.body.steps.map(item => item.status), ['verified'])
+      assert.equal(calls.filter(call => call.method !== 'GET').length, 1)
+    })
+  })
+}
+
+for (const [mode, status, outcomes, writes] of [
+  ['normal', 'completed', ['verified', 'verified', 'verified'], 3],
+  ['notifier-provider-mismatch', 'READBACK_UNVERIFIED', ['failed', 'not-attempted', 'not-attempted'], 1],
+  ['notifier-description-mismatch', 'READBACK_UNVERIFIED', ['failed', 'not-attempted', 'not-attempted'], 1],
+  ['notifier-args-mismatch', 'READBACK_UNVERIFIED', ['failed', 'not-attempted', 'not-attempted'], 1],
+  ['notifier-args-missing', 'completed', ['acknowledged-unverified', 'verified', 'verified'], 3],
+  ['alert-name-mismatch', 'READBACK_UNVERIFIED', ['verified', 'failed', 'not-attempted'], 2],
+  ['alert-expiration-mismatch', 'READBACK_UNVERIFIED', ['verified', 'failed', 'not-attempted'], 2],
+  ['alert-expiration-missing', 'completed', ['verified', 'acknowledged-unverified', 'verified'], 3],
+]) {
+  test(`import compares requested creation state in ${mode} mode`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ root, run, calls, setMode }) => {
+      const path = join(root, 'import.json')
+      const input = [{ name: 'Imported', filters: { ip: ['192.0.2.9'] }, notifiers: [{ id: 'old', provider: 'email', description: 'Requested description', args: { to: 'hidden@example.test', enabled: true, attempts: 2 } }] }]
+      await writeFile(path, JSON.stringify(input), { mode: 0o600 })
+      const args = ['alert', 'import', path, '--allow-operation', 'OP-027,OP-013,OP-023', '--accept-unknown-cost', '--query-credit-budget', '3', '--max-requests', '8']
+      const preview = await run(args)
+      assert.equal(preview.body.status, 'preview')
+      setMode(mode)
+      const result = await run([...args, '--execute', '--confirm', preview.body.token])
+      assert.equal(result.body.status, status)
+      assert.deepEqual(result.body.steps.map(item => item.status), outcomes)
+      assert.equal(calls.filter(call => call.method !== 'GET').length, writes)
+      const journal = (await readFile(join(root, '.local/state/shodan-axi/writes.log'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+      assert.deepEqual(journal.filter(entry => entry.phase === 'result').map(entry => entry.status), outcomes.slice(0, writes))
+      assert.doesNotMatch(result.stdout + JSON.stringify(journal), /hidden@example|other@example/)
+    })
+  })
+}
+
+for (const [mode, status, outcome] of [
+  ['normal', 'completed', 'verified'],
+  ['alert-expiration-mismatch', 'READBACK_UNVERIFIED', 'failed'],
+  ['alert-expiration-too-long', 'READBACK_UNVERIFIED', 'failed'],
+  ['alert-expiration-missing', 'completed', 'acknowledged-unverified'],
+]) {
+  test(`finite alert expiration readback reports ${outcome}`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ run, setMode }) => {
+      const args = ['alert', 'create', 'Temporary', '192.0.2.9', '--expires', '60', '--allow-operation', 'OP-013', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3']
+      const preview = await run(args)
+      assert.equal(preview.body.status, 'preview')
+      setMode(mode)
+      const result = await run([...args, '--execute', '--confirm', preview.body.token])
+      assert.equal(result.body.status, status)
+      assert.equal(result.body.steps[0].status, outcome)
+    })
+  })
+}
+
 for (const [command, operation, credit, maximum] of [
   ['remove', 'OP-015', '1', 3],
   ['clear', 'OP-015', '1', 3],

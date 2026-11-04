@@ -35,11 +35,11 @@ export async function withInvestigation(check) {
         calls.at(-1).body = input
         const match = /^\/shodan\/alert\/([^/]+)$/.exec(url.pathname)
         if (request.method === 'POST' && url.pathname === '/notifier') {
-          const fields = Object.fromEntries(new URLSearchParams(input)); const created = { id: 'notifier-new', provider: fields.provider, args: fields }
+          const fields = Object.fromEntries(new URLSearchParams(input)); const created = { id: 'notifier-new', provider: fields.provider, description: fields.description, args: fields }
           notifiers.set(created.id, created); response.end(JSON.stringify({ id: created.id, success: true })); return
         }
         if (request.method === 'POST' && url.pathname === '/shodan/alert') {
-          const body = JSON.parse(input); const created = { id: 'alert-new', ...body, triggers: {}, notifiers: [], expiration: null }
+          const body = JSON.parse(input); const created = { id: 'alert-new', ...body, triggers: {}, notifiers: [], expiration: body.expires === 0 ? null : new Date(Date.now() + body.expires * 1000).toISOString() }
           alerts.set(created.id, created)
           if (mode === 'lost-write' || mode === 'lost-create-alert') { request.socket.destroy(); return }
           response.end(JSON.stringify(created)); return
@@ -87,13 +87,25 @@ export async function withInvestigation(check) {
       if (alertInfo) {
         const selected = alerts.get(alertInfo[1])
         if (!selected) { response.writeHead(404); response.end('{}'); return }
-        response.end(JSON.stringify(selected)); return
+        const changes = {
+          'alert-name-mismatch': { name: 'Different name' },
+          'alert-expiration-mismatch': { expiration: '2000-01-01T00:00:00.000Z' },
+          'alert-expiration-too-long': { expiration: new Date(Date.now() + 120000).toISOString() },
+          'alert-expiration-missing': { expiration: undefined },
+        }
+        response.end(JSON.stringify({ ...selected, ...changes[mode] })); return
       }
       const notifierInfo = /^\/notifier\/([^/]+)$/.exec(url.pathname)
       if (notifierInfo && notifierInfo[1] !== 'provider') {
         const selected = notifiers.get(notifierInfo[1])
         if (!selected) { response.writeHead(404); response.end('{}'); return }
-        response.end(JSON.stringify(selected)); return
+        const changes = {
+          'notifier-provider-mismatch': { provider: 'Different provider' },
+          'notifier-description-mismatch': { description: 'Different description' },
+          'notifier-args-mismatch': { args: { to: 'other@example.test' } },
+          'notifier-args-missing': { args: undefined },
+        }
+        response.end(JSON.stringify({ ...selected, ...changes[mode] })); return
       }
       if (['/shodan/host/192.0.2.8', '/shodan/host/2001%3Adb8%3A%3A8'].includes(url.pathname)) {
         response.writeHead(mode === 'domain-enrichment-denied' ? 403 : 404)
