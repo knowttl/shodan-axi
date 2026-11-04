@@ -55,6 +55,7 @@ export async function withInvestigation(check) {
           response.end(Buffer.concat([Buffer.from(`${frame(first)}${frame({ event: 'debug', discarded: 3 })}`), Buffer.isBuffer(suffix) ? suffix : Buffer.from(sse ? `data: ${suffix}\n` : suffix)])); return
         }
         if (mode === 'stream-wait') { response.write(frame(first)); return }
+        if (mode === 'stream-wait-accounting') { response.write(`${frame(first)}${frame({ event: 'debug', discarded: 3 })}{"ip_str":`); return }
         const payload = Buffer.from(`\n${frame(first)}${frame({ event: 'debug', discarded: 3 })}${frame(second)}`)
         const split = payload.indexOf(Buffer.from('é')) + 1
         response.write(payload.subarray(0, split))
@@ -303,6 +304,7 @@ export async function withInvestigation(check) {
       return {
         readsPath,
         send: value => { channel.write(`${JSON.stringify(value)}\n`) },
+        sendRaw: value => { channel.write(value) },
         next: () => values.length ? Promise.resolve(values.shift()) : new Promise(resolve => waiting.push(resolve)),
         closed: new Promise((resolve, reject) => { child.on('error', reject); child.on('close', resolve) }),
         close: () => { channel.end() },

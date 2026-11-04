@@ -8,6 +8,43 @@ const args = ['stream', '--allow-operation', 'OP-046', '--accept-unknown-cost', 
 const admission = 'synthetic-host-admission-binding-01'
 const start = confirmation => ({ version: 1, type: 'start', requestId: 'start-1', admission, operation: 'OP-046', selector: null, bounds: limits, confirmation })
 
+for (const [name, frame, error] of [
+  ['malformed JSON', '{broken}\n', 'INVALID_INPUT'],
+  ['invalid UTF-8', Buffer.from([0xff, 10]), 'INVALID_INPUT'],
+  ['missing extension binding', `${JSON.stringify({ version: 1, type: 'extend', requestId: 'extend-1', deadlineMs: 1 })}\n`, 'INVALID_INPUT'],
+  ['wrong extension binding', `${JSON.stringify({ version: 1, type: 'extend', requestId: 'extend-1', admission: 'incorrect-host-admission-binding-01', deadlineMs: 1 })}\n`, 'ADMISSION_REQUIRED'],
+  ['rejected deadline', `${JSON.stringify({ version: 1, type: 'extend', requestId: 'extend-1', admission, deadlineMs: 1 })}\n`, 'INVALID_INPUT'],
+  ['duplicate request', `${JSON.stringify({ version: 1, type: 'stop', requestId: 'start-1' })}\n`, 'INVALID_INPUT'],
+  ['second start', `${JSON.stringify({ ...start('00000000-0000-4000-8000-000000000001'), requestId: 'start-2' })}\n`, 'INVALID_INPUT'],
+  ['repeated admission', `${JSON.stringify({ version: 1, type: 'admit', requestId: 'admit-2', admission, profilePath: '/unused' })}\n`, 'ADMISSION_REQUIRED'],
+  ['oversized frame', `${'x'.repeat(2 * 1024 * 1024 + 1)}\n`, 'INVALID_INPUT'],
+  ['oversized pending frame', 'x'.repeat(2 * 1024 * 1024 + 1), 'INVALID_INPUT'],
+]) {
+  test(`worker preserves final accounting after ${name}`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ runHosted: run, launchWorker, calls, setMode }) => {
+      setMode('stream-wait-accounting')
+      const preview = await run(args)
+      const worker = launchWorker(); worker.send(start(preview.body.token))
+      assert.equal((await worker.next()).type, 'ready')
+      const first = await worker.next()
+      assert.equal(first.type, 'event')
+      assert.equal((await worker.next()).discarded, 3)
+      worker.sendRaw(frame)
+      const closed = await worker.next()
+      assert.equal(closed.type, 'closed')
+      assert.equal(closed.stopReason, 'protocol-error')
+      assert.equal(closed.error, error)
+      assert.equal(closed.count, 1)
+      assert.equal(closed.bytes, Buffer.byteLength(`${JSON.stringify(first.event)}\n${JSON.stringify({ event: 'debug', discarded: 3 })}\n{"ip_str":`))
+      assert.equal(closed.debugDiscarded, 3)
+      assert.equal(closed.partialRecordCount, 1)
+      assert.deepEqual(closed.bounds, limits)
+      assert.equal(await worker.closed, 0)
+      assert.equal(calls.length, 1)
+    })
+  })
+}
+
 test('private worker frames admitted events, loss and a terminal summary', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ runHosted: run, launchWorker, calls, hostProfile, setMode }) => {
     setMode('stream-json')
