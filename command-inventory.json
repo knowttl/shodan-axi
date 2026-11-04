@@ -1,6 +1,92 @@
 {
   "commands": [
     {
+      "command": "geonet ping",
+      "operation": "OP-060",
+      "effect": "active",
+      "cost": "none",
+      "auth": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--allow-operation",
+        "--max-requests",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "ip"
+        }
+      ]
+    },
+    {
+      "command": "geonet geoping",
+      "operation": "OP-061",
+      "effect": "active",
+      "cost": "none",
+      "auth": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--allow-operation",
+        "--max-requests",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "ip"
+        }
+      ]
+    },
+    {
+      "command": "geonet dns",
+      "operation": "OP-062",
+      "effect": "active",
+      "cost": "none",
+      "auth": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--allow-operation",
+        "--max-requests",
+        "--execute",
+        "--confirm",
+        "--type"
+      ],
+      "arguments": [
+        {
+          "name": "hostname"
+        }
+      ]
+    },
+    {
+      "command": "geonet geodns",
+      "operation": "OP-063",
+      "effect": "active",
+      "cost": "none",
+      "auth": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--allow-operation",
+        "--max-requests",
+        "--execute",
+        "--confirm",
+        "--type"
+      ],
+      "arguments": [
+        {
+          "name": "hostname"
+        }
+      ]
+    },
+    {
       "command": "account profile",
       "operation": "OP-039",
       "effect": "read",

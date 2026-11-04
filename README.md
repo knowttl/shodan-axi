@@ -1,7 +1,7 @@
 # shodan-axi
 
 An agent-facing CLI for Shodan investigation, scans, alerts, notifiers and organization membership.
-It supports SecretRef-based profiles, host and DNS inspection, search, counts, bounded statistics, historical and shared intelligence reads, scan submission and job inspection, and alert, notifier and organization membership management.
+It supports SecretRef-based profiles, host and DNS inspection, search, counts, bounded statistics, historical and shared intelligence reads, geographic active probes, scan submission and job inspection, and alert, notifier and organization membership management.
 
 ```sh
 shodan-axi profile set default --env SHODAN_AXI_API_KEY
@@ -26,6 +26,14 @@ For native Trends exports, choose `--save` for a query-derived filename or `--fi
 Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
 Alert and notifier reads and writes are available through the native CLI.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
+The native `geonet ping`, `geonet geoping`, `geonet dns` and `geonet geodns` commands perform active probes without an API key.
+Ping commands take an IP address; DNS commands take a hostname and accept `--type <record-type>` (default `A`).
+Each requires its exact operation grant and request bound, followed by a protected preview and exact confirmation; observer locations are selected by the service.
+For example, preview a DNS probe with `shodan-axi geonet dns example.test --type A --allow-operation OP-062 --max-requests 1`, then repeat the same request with `--execute --confirm <token>` after owner approval.
+Probe confirmations bind the operation, target, DNS type, service origin and request bound.
+GeoNet results preserve each observer's values without assigning undocumented units.
+An uncertain probe returns `OUTCOME_UNKNOWN` and is never automatically retried.
+Hosted execution refuses these active probes before retrieving credentials.
 Use `scan protocols`, `scan list` and `scan status <id>` to inspect scan capabilities and jobs.
 The status command can poll with `--poll-attempts`, `--poll-interval-ms` and an explicit `--max-requests` bound.
 Scan list pagination is undocumented, so the response indicates whether the returned scope is complete without inventing a page parameter.
@@ -39,8 +47,8 @@ An organization membership add notifies the member unless `--silent` is supplied
 Writes require an exact operation grant and request and credit bounds; unknown-cost writes also require `--accept-unknown-cost`.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
 For example, preview a removal with `shodan-axi alert remove <id> --allow-operation OP-015 --accept-unknown-cost --query-credit-budget 1 --max-requests 3`.
-Set `SHODAN_AXI_READ_ONLY=true` to refuse execution before credential retrieval; previews remain available.
-Plans bind the selected profile, credential, input, effects and observed state; uncertain sends are never automatically retried.
+Set `SHODAN_AXI_READ_ONLY=true` to refuse write and active probe execution before credential retrieval; previews remain available.
+Write plans bind the selected profile, credential, input, effects and observed state; uncertain sends are never automatically retried.
 Confirmation tokens expire after 15 minutes and are consumed before dispatch.
 Plans and the default `writes.log` journal live under `shodan-axi` in the absolute `XDG_STATE_HOME` directory, falling back to `~/.local/state`; Windows uses absolute `LOCALAPPDATA`, falling back to `~/AppData/Local`.
 `SHODAN_AXI_WRITE_LOG` selects a private absolute journal path instead.
@@ -53,10 +61,11 @@ Notifier creation and updates use a private absolute `--body-file` containing JS
 `alert import <absolute-path>` accepts a private JSON array or JSONL file, optionally gzip-compressed, and previews ordered notifier creation, alert creation, trigger, ignore and notifier attachment steps.
 See [the generated command inventory](command-inventory.json) for command arguments, flags, operation grants and public output schemas for free reads.
 Those reads omit unknown vendor fields, including provider-issued credential fields, in both hosted and native output.
-Native commands contact the configured Shodan origin; offline verification uses controlled fakes, and live mutations require the owner's separate per-action approval.
+GeoNet contacts `https://geonet.shodan.io` independently of profile configuration; other native commands use the configured Shodan origin or their service-specific endpoints.
+Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.3 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.4 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.

@@ -75,12 +75,12 @@ export function validateMutationFlags(flags: Flags): void {
   if (flags.has('--execute') && /^(true|1)$/i.test(process.env.SHODAN_AXI_READ_ONLY ?? '')) throw new ToolError('READ_ONLY', 'Writes are disabled', 'Use a writable environment')
 }
 
-const stateRoot = (): string => {
+export const stateRoot = (): string => {
   const base = process.platform === 'win32' ? process.env.LOCALAPPDATA : process.env.XDG_STATE_HOME
   return join(base && isAbsolute(base) ? base : process.platform === 'win32' ? join(homedir(), 'AppData', 'Local') : join(homedir(), '.local', 'state'), 'shodan-axi')
 }
 
-async function planKey(root: string): Promise<string> {
+export async function planKey(root: string): Promise<string> {
   const path = join(root, 'plan-key')
   try {
     const existing = await readPrivate(path, true)
