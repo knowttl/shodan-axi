@@ -25,7 +25,7 @@ const number = (flags: Flags, name: string, max: number): number => {
 }
 const hash = (text: string): string => createHash('sha256').update(text).digest('hex')
 const record = z.record(z.string(), z.unknown())
-const page = z.object({ total: z.number().int().nonnegative(), matches: z.array(record) })
+const page = z.object({ total: z.number().int().nonnegative(), matches: z.array(z.object({ metadata: z.object({ truncated: z.array(z.string()).optional() }).passthrough().optional() }).passthrough()) })
 const savedPlan = z.object({ token: z.string().uuid(), binding: z.string(), created: z.number(), mac: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 
 export type ExportDraft = { query: string; queries?: string[]; destination: string; limit: number; maxBytes: number; maxRequests: number; budget: number; fields: string[] }
@@ -96,6 +96,7 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   await preparePrivateDirectory(dirname(draft.destination))
   for (const path of [draft.destination, partial]) try { await lstat(path); throw new ToolError('DESTINATION_EXISTS', 'Output already exists', 'Choose another destination') } catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
   let count = 0; let size = 0; let total = 0; let searchRequests = 0; let finishedQueries = 0; let countedQueries = 0
+  let truncated = false
   async function* rows(): AsyncGenerator<string> {
     for (const query of draft.queries ?? [draft.query]) {
     for (let pageNumber = 1; count < draft.limit && searchRequests < draft.maxRequests - 2 && searchRequests < draft.budget; pageNumber++) {
@@ -106,6 +107,7 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
       if (!response.data.matches.length) { finishedQueries++; break }
       for (const row of response.data.matches) {
         if (count >= draft.limit) break
+        if (row.metadata?.truncated?.length) truncated = true
         const selected = draft.fields.length ? Object.fromEntries(draft.fields.map(field => [field, field.split('.').reduce<unknown>((item, part) => { const parsed = record.safeParse(item); return parsed.success ? parsed.data[part] : undefined }, row) ?? null])) : row
         const line = `${JSON.stringify(clean(selected, key))}\n`
         size += Buffer.byteLength(line)
@@ -124,7 +126,7 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   let savedBytes = 0; const savedHash = createHash('sha256')
   for await (const chunk of createReadStream(partial)) { if (!Buffer.isBuffer(chunk)) throw new Error('Invalid file chunk'); savedBytes += chunk.length; savedHash.update(chunk) }
   if (savedBytes > draft.maxBytes) throw new ToolError('LIMIT_REACHED', 'Compressed export exceeds the byte limit', 'Increase the bound or narrow the selection')
-  const complete = finishedQueries === (draft.queries?.length ?? 1) && count >= total
+  const complete = !truncated && finishedQueries === (draft.queries?.length ?? 1) && count >= total
   if (complete) { await link(partial, draft.destination); await unlink(partial) }
   return { path: complete ? draft.destination : partial, count, total: countedQueries === (draft.queries?.length ?? 1) ? total : null, requests: searchRequests + (draft.queries ? 1 : 0), complete, bytes: savedBytes, sha256: savedHash.digest('hex'), uncompressedBytes: size }
 }

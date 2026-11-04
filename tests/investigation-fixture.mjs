@@ -181,6 +181,10 @@ export async function withInvestigation(check) {
       if (mode === 'alert-export-networks') {
         values['/shodan/alert/info'] = [{ id: 'alert-a', filters: { ip: ['192.0.2.0/24', '198.51.100.0/24'] } }]
       }
+      if (mode === 'export-truncated') {
+        values['/shodan/host/count'] = { total: 1 }
+        values['/shodan/host/search'] = { total: 1, matches: [banners[2]] }
+      }
       if (mode === 'alert-formula-facets') values['/shodan/host/count'] = { total: 1, facets: { domain: [{ value: '=1+2', count: 1 }] } }
       if (mode === 'alert-multiple-facets') values['/shodan/host/count'] = { total: 2, facets: { port: [{ value: 443, count: 2 }, { value: 80, count: 1 }], country: [{ value: 'CA', count: 2 }] } }
       if (mode === 'alert-top-buckets') {

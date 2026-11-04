@@ -85,6 +85,33 @@ for (const { name, limit, budget, total, complete, count } of [
   })
 })
 
+for (const { name, command, fields, hasMetadata } of [
+  { name: 'search with raw fields', command: ['download', 'port:443'], fields: [], hasMetadata: true },
+  { name: 'search with projected fields', command: ['download', 'port:443'], fields: ['--fields', 'ip_str'], hasMetadata: false },
+  { name: 'alerts with raw fields', command: ['alert', 'download'], fields: [], hasMetadata: true },
+  { name: 'alerts with projected fields', command: ['alert', 'download'], fields: ['--fields', 'ip_str'], hasMetadata: false },
+]) test(`export keeps provider-truncated ${name} incomplete`, { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, calls, setMode }) => {
+    setMode('export-truncated')
+    const destination = join(root, 'truncated.json.gz')
+    const args = [...command, ...fields, '--filename', destination, '--limit', '1', '--max-bytes', '10000', '--max-requests', '4', '--query-credit-budget', '1', '--allow-operation', 'OP-003']
+    const preview = await run(args)
+    assert.equal(preview.body.status, 'preview', preview.stdout)
+    const before = calls.length
+    const result = await run([...args, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.requests, calls.length - before)
+    assert.equal(result.body.count, 1, result.stdout)
+    assert.equal(result.body.total, 1)
+    assert.equal(result.body.complete, false)
+    assert.equal(result.body.path, `${destination}.partial`)
+    await assert.rejects(readFile(destination), { code: 'ENOENT' })
+    const rows = gunzipSync(await readFile(result.body.path)).toString().trim().split('\n').map(line => JSON.parse(line))
+    assert.equal(rows.length, 1)
+    assert.equal(rows[0].ip_str, '192.0.2.7')
+    assert.equal(Object.hasOwn(rows[0], 'metadata'), hasMetadata)
+  })
+})
+
 test('export confirmation binds its destination and respects read-only mode', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, calls }) => {
     const args = ['download', 'port:443', '--filename', join(root, 'first'), '--limit', '2', '--max-bytes', '10000', '--max-requests', '3', '--query-credit-budget', '1', '--allow-operation', 'OP-003']
