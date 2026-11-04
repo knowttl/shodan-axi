@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { lstat, readFile, rename, rm } from 'node:fs/promises'
 import { isIP } from 'node:net'
 import { dirname, resolve } from 'node:path'
 import { gunzipSync, gzipSync } from 'node:zlib'
@@ -8,7 +8,7 @@ import ipaddr from 'ipaddr.js'
 import jpeg from 'jpeg-js'
 import { z } from 'zod'
 import { ToolError } from './errors.js'
-import { readPrivateBytes, writePrivate } from './private-file.js'
+import { preparePrivateDirectory, readPrivateBytes, writePrivate } from './private-file.js'
 
 type Flags = Map<string, string | boolean>
 type RecordValue = Record<string, unknown>
@@ -67,7 +67,11 @@ function cell(value: unknown): string {
   if (value === undefined || value === null) return ''
   return Array.isArray(value) ? value.map(cell).join(';') : typeof value === 'object' ? JSON.stringify(value) : typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' ? String(value) : ''
 }
-function csv(value: unknown): string { const text = cell(value); return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text }
+export function csv(value: unknown): string {
+  const raw = cell(value)
+  const text = /^[\s\p{Cc}]*[=+@-]/u.test(raw) || /^[\t\r\n]/.test(raw) ? `'${raw}` : raw
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
+}
 function xml(value: string): string { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;') }
 function locations(rows: RecordValue[]): { ip: string; latitude: number; longitude: number }[] {
   const unique = new Map<string, { ip: string; latitude: number; longitude: number }>()
@@ -108,7 +112,7 @@ export async function evidence(words: string[], flags: Flags): Promise<unknown> 
     }
     const output = rows.map(row => Object.fromEntries(selected.map(name => [name, field(row, name) ?? null])))
     const separator = option(flags, '--separator') ?? '\t'
-    const display = output.map(row => selected.map(name => { const text = cell(row[name]).replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t'); return flags.has('--color') ? `\u001b[36m${text}\u001b[0m` : text }).join(separator)).join('\n')
+    const display = output.map(row => selected.map(name => { const text = cell(row[name]).replace(/[\p{Cc}]/gu, control => control === '\n' ? '\\n' : control === '\r' ? '\\r' : control === '\t' ? '\\t' : `\\u${control.charCodeAt(0).toString(16).padStart(4, '0')}`); return flags.has('--color') ? `\u001b[36m${text}\u001b[0m` : text }).join(separator)).join('\n')
     if (Buffer.byteLength(JSON.stringify(output)) + Buffer.byteLength(display) > 1024 * 1024) return invalid('Parsed output exceeds the limit')
     const filename = option(flags, '--filename')
     let artifact
@@ -119,6 +123,7 @@ export async function evidence(words: string[], flags: Flags): Promise<unknown> 
       const bytes = gzipSync(text)
       let prior: Buffer<ArrayBufferLike> = Buffer.alloc(0)
       try { prior = await readPrivateBytes(resolve(destination), false); const decoded = gunzipSync(prior, { maxOutputLength: 10 * 1024 * 1024 }); if (decoded.length + Buffer.byteLength(text) > 10 * 1024 * 1024) return invalid('Saved output exceeds the limit') } catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
+      if (prior.length + bytes.length > 1024 * 1024) return invalid('Saved output exceeds the limit')
       artifact = await save(destination, Buffer.concat([prior, bytes]), true)
     }
     return { items: output, count: output.length, complete: true, display, ...(artifact ? { saved: artifact } : {}) }
@@ -154,10 +159,10 @@ export async function evidence(words: string[], flags: Flags): Promise<unknown> 
     })
     const temporary = `${destination}.${randomUUID()}.tmp`
     try { await lstat(destination); throw new ToolError('DESTINATION_EXISTS', 'Output already exists', 'Choose another destination') } catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
-    await mkdir(temporary, { mode: 0o700 })
+    await preparePrivateDirectory(dirname(destination))
+    await preparePrivateDirectory(temporary)
     try {
       for (const image of images) await save(resolve(temporary, image.name), image.bytes)
-      await mkdir(dirname(destination), { recursive: true, mode: 0o700 })
       await rename(temporary, destination)
     } finally { await rm(temporary, { recursive: true, force: true }) }
     return { format, path: destination, count: images.length, complete: true }

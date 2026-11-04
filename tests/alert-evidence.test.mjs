@@ -45,6 +45,17 @@ test('merged truncated facet buckets remain partial across disjoint networks', {
   })
 })
 
+test('statistics CSV encodes untrusted facet formulas as literal text', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, setMode }) => {
+    setMode('alert-formula-facets')
+    const filename = join(root, 'stats.csv')
+    const result = await run(['alert', 'stats', '--facets', 'domain', '--filename', filename])
+    assert.equal(result.code, 0)
+    assert.equal(result.body.items[0].value, '=1+2')
+    assert.equal(await readFile(`${filename}.partial`, 'utf8'), "facet,value,count\ndomain,'=1+2,1\n")
+  })
+})
+
 test('facet limits apply independently to each facet', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ run, setMode }) => {
     setMode('alert-multiple-facets')

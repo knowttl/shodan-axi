@@ -176,6 +176,7 @@ export async function withInvestigation(check) {
         ]
       }
       if (mode === 'alert-exact-partial') values['/shodan/host/search'] = { total: 200, matches: banners.slice(0, 2) }
+      if (mode === 'alert-formula-facets') values['/shodan/host/count'] = { total: 1, facets: { domain: [{ value: '=1+2', count: 1 }] } }
       if (mode === 'alert-exact-complete') values['/shodan/host/search'] = { total: 3, matches: [banners[0], banners[0], banners[1]] }
       if (mode === 'alert-multiple-facets') values['/shodan/host/count'] = { total: 2, facets: { port: [{ value: 443, count: 2 }, { value: 80, count: 1 }], country: [{ value: 'CA', count: 2 }] } }
       if (mode === 'alert-top-buckets') {

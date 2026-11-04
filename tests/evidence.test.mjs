@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { readFile, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { chmod, mkdir, readFile, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { gzipSync, gunzipSync } from 'node:zlib'
@@ -48,10 +49,66 @@ test('conversions produce readable CSV, KML, GeoJSON, XLSX and JPEG', { timeout:
     const image = jpeg.encode({ data: Buffer.alloc(16, 255), width: 2, height: 2 }).data
     const imageInput = join(root, 'screenshot.json')
     await writeFile(imageInput, JSON.stringify({ ...rows[0], opts: { screenshot: { mime: 'image/jpeg', data: image.toString('base64') } } }), { mode: 0o600 })
-    assert.equal((await run(['convert', imageInput, 'images'])).code, 0)
-    const output = await readFile(join(root, 'screenshot.images', '1.jpg'))
+    const imageDestination = join(root, 'exports', 'screenshots')
+    assert.equal((await run(['convert', imageInput, 'images', '--filename', imageDestination])).code, 0)
+    const output = await readFile(join(imageDestination, '1.jpg'))
     assert.deepEqual(output, image)
     assert.equal(jpeg.decode(output).width, 2)
+  })
+})
+
+test('image conversion rejects indirect and writable parents', { timeout: 30000, skip: process.platform === 'win32' }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    const input = join(root, 'empty.json')
+    await writeFile(input, '[]', { mode: 0o600 })
+    const parent = join(root, 'exports')
+    await mkdir(parent, { mode: 0o700 })
+    const linked = join(root, 'linked')
+    await symlink(parent, linked)
+    assert.equal((await run(['convert', input, 'images', '--filename', join(linked, 'screenshots')])).body.error, 'CONFIG_INSECURE')
+    await chmod(parent, 0o777)
+    assert.equal((await run(['convert', input, 'images', '--filename', join(parent, 'screenshots')])).body.error, 'CONFIG_INSECURE')
+    await assert.rejects(readFile(join(parent, 'screenshots')), { code: 'ENOENT' })
+  })
+})
+
+test('parse rejects oversized compressed saves without replacing prior evidence', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    const input = join(root, 'large.json.gz')
+    const data = createHash('shake256', { outputLength: 700 * 1024 }).update('saved evidence fixture').digest('base64')
+    await writeFile(input, gzipSync(JSON.stringify({ ip_str: '192.0.2.7', data }) + '\n'), { mode: 0o600 })
+    const saved = join(root, 'filtered.json.gz')
+    const args = ['--filters', 'ip_str:192.0.2.7', '--fields', 'ip_str', '--filename', saved]
+    assert.equal((await run(['parse', input, ...args])).code, 0)
+    const prior = await readFile(saved)
+    assert.equal((await run(['parse', input, ...args])).body.error, 'INVALID_INPUT')
+    assert.deepEqual(await readFile(saved), prior)
+    assert.equal((await run(['parse', saved, '--fields', 'ip_str'])).code, 0)
+    const fresh = join(root, 'combined.json.gz')
+    assert.equal((await run(['parse', input, input, '--filters', 'ip_str:192.0.2.7', '--fields', 'ip_str', '--filename', fresh])).body.error, 'INVALID_INPUT')
+    await assert.rejects(readFile(fresh), { code: 'ENOENT' })
+  })
+})
+
+test('CSV conversion encodes formula cells as literal text', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    const input = join(root, 'formulas.json')
+    await writeFile(input, JSON.stringify([{ data: '=1+2', hostnames: ['@SUM(1)'] }, { data: ' +1', hostnames: ['-1'] }, { data: '\t=1', hostnames: ['safe,"quoted"'] }]), { mode: 0o600 })
+    assert.equal((await run(['convert', input, 'csv', '--fields', 'data,hostnames'])).code, 0)
+    assert.equal(await readFile(join(root, 'formulas.csv'), 'utf8'), 'data,hostnames\r\n\'=1+2,\'@SUM(1)\r\n\' +1,\'-1\r\n\'\t=1,"safe,""quoted"""\r\n')
+  })
+})
+
+test('parse escapes banner terminal controls before applying color', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    const input = join(root, 'controls.json')
+    const data = '\u001b[2J\u001b[H\u009b2J\b\u0000\n\r\t'
+    await writeFile(input, JSON.stringify({ data, hostnames: ['\u001b[H'] }), { mode: 0o600 })
+    const plain = await run(['parse', input, '--fields', 'data,hostnames', '--no-color'])
+    assert.equal(plain.body.display, '\\u001b[2J\\u001b[H\\u009b2J\\u0008\\u0000\\n\\r\\t\t\\u001b[H')
+    assert.equal(plain.body.items[0].data, data)
+    const colored = await run(['parse', input, '--fields', 'data', '--color'])
+    assert.equal(colored.body.display, '\u001b[36m\\u001b[2J\\u001b[H\\u009b2J\\u0008\\u0000\\n\\r\\t\u001b[0m')
   })
 })
 

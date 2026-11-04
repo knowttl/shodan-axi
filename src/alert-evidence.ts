@@ -2,7 +2,7 @@ import { gzipSync } from 'node:zlib'
 import ipaddr from 'ipaddr.js'
 import { z } from 'zod'
 import type { Selection } from './credentials.js'
-import { save } from './evidence.js'
+import { csv, save } from './evidence.js'
 import { ToolError } from './errors.js'
 import { clean } from './redact.js'
 import { requestJson } from './vendor.js'
@@ -140,6 +140,6 @@ export async function alertEvidence(words: string[], flags: Flags, selection: Se
     return { ...item, value: typeof safe === 'string' || typeof safe === 'number' ? safe : '' }
   })
   const filename = value(flags, '--filename')
-  const saved = filename ? await save(complete ? filename : `${filename}.partial`, Buffer.from(['facet,value,count', ...items.map(row => [row.facet, row.value, row.count].map(item => `"${String(item).replace(/"/g, '""')}"`).join(','))].join('\n') + '\n')) : undefined
+  const saved = filename ? await save(complete ? filename : `${filename}.partial`, Buffer.from(['facet,value,count', ...items.map(row => [row.facet, row.value, row.count].map(csv).join(','))].join('\n') + '\n')) : undefined
   return { networks, total, items, count: items.length, aggregation: complete ? 'exact' : 'partial', complete, ...(continuation ? { continuation } : {}), ...(saved ? { saved } : {}) }
 }
