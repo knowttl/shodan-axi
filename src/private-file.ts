@@ -41,11 +41,10 @@ export async function readPrivate(path: string, secret: boolean, options: Option
   return (await readPrivateBytes(path, secret, options)).toString('utf8')
 }
 
-export async function writePrivate(path: string, content: string, options: Options = {}): Promise<void> {
+export async function preparePrivateDirectory(directory: string, options: Options = {}): Promise<void> {
   const platform = options.platform ?? process.platform
   const acl = options.acl ?? windowsAcl
-  if (!isAbsolute(path) || (process.platform === 'win32' && !/^[A-Za-z]:[\\/]/.test(path))) insecure()
-  const directory = dirname(path)
+  if (!isAbsolute(directory) || (process.platform === 'win32' && !/^[A-Za-z]:[\\/]/.test(directory))) insecure()
   const first = await mkdir(directory, platform === 'win32' ? { recursive: true } : { recursive: true, mode: 0o700 })
   await direct(directory, platform)
   const parent = await lstat(directory)
@@ -60,6 +59,14 @@ export async function writePrivate(path: string, content: string, options: Optio
   } else if (platform !== 'win32') {
     if (parent.uid !== process.getuid?.() || (parent.mode & 0o022) !== 0) insecure()
   }
+}
+
+export async function writePrivate(path: string, content: string | Uint8Array, options: Options = {}): Promise<void> {
+  const platform = options.platform ?? process.platform
+  const acl = options.acl ?? windowsAcl
+  if (!isAbsolute(path) || (process.platform === 'win32' && !/^[A-Za-z]:[\\/]/.test(path))) insecure()
+  const directory = dirname(path)
+  await preparePrivateDirectory(directory, options)
   try { await readPrivate(path, false, options) } catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
   }

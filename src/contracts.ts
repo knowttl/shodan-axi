@@ -76,3 +76,6 @@ export const hostedReadOutputs: Record<string, z.ZodType> = {
 export const statsOutput = count.extend({ facets, buckets: z.array(facet.extend({ facet: z.string() })), count: z.number().int().nonnegative(), saved: artifact.optional() })
 export const homeOutput = z.object({ bin: z.string(), description: z.string(), account: info, help: z.array(z.string()) })
 export const doctorOutput = z.object({ status: z.literal('ok'), account: info })
+const savedEvidence = z.object({ path: z.string(), bytes: z.number().int().nonnegative(), sha256: z.string() })
+export const alertExportOutput = savedEvidence.extend({ count: z.number().int().nonnegative(), complete: z.literal(true) })
+export const alertStatsOutput = z.object({ networks: z.array(z.string()), total: z.number().int().nonnegative(), items: z.array(z.object({ facet: z.string(), value: z.union([z.string(), z.number()]), count: z.number().int().nonnegative() })), count: z.number().int().nonnegative(), aggregation: z.enum(['exact', 'partial']), complete: z.boolean(), continuation: z.object({ network: z.string(), page: z.number().int().positive() }).optional(), saved: savedEvidence.optional() })

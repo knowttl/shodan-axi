@@ -169,6 +169,18 @@ export async function withInvestigation(check) {
         '/api/dns/service.example.test': { answers: [{ type: 'A', value: '192.0.2.7' }], from_loc: { city: 'West', country: 'CA', latlon: '49,-123' } },
         '/api/geodns/service.example.test': [{ answers: [{ type: 'A', value: '192.0.2.7' }], from_loc: { city: 'West', country: 'CA', latlon: '49,-123' } }, { answers: [], from_loc: { city: 'East', country: 'CA', latlon: '43,-79' } }],
       }
+      if (mode === 'alert-evidence') {
+        values['/shodan/alert/info'] = [
+          { id: 'alert-a', name: 'First', filters: { ip: ['192.0.2.0/24', '192.0.2.0/25'] }, triggers: { any: { ignore: [{ ip: '192.0.2.9', port: 80 }] } }, notifiers: [{ id: 'n1', provider: 'email', args: { token: 'private-notifier-secret' } }] },
+          { id: 'alert-b', name: 'Second', filters: { ip: ['192.0.2.9/32'] }, triggers: {}, notifiers: [] },
+        ]
+      }
+      if (mode === 'alert-formula-facets') values['/shodan/host/count'] = { total: 1, facets: { domain: [{ value: '=1+2', count: 1 }] } }
+      if (mode === 'alert-multiple-facets') values['/shodan/host/count'] = { total: 2, facets: { port: [{ value: 443, count: 2 }, { value: 80, count: 1 }], country: [{ value: 'CA', count: 2 }] } }
+      if (mode === 'alert-top-buckets') {
+        values['/shodan/alert/info'] = [{ id: 'one', name: 'One', filters: { ip: ['192.0.2.0/24', '192.0.2.0/25'] } }, { id: 'two', name: 'Two', filters: { ip: ['198.51.100.0/24'] } }]
+        values['/shodan/host/count'] = url.searchParams.get('query') === 'net:192.0.2.0/24' ? { total: 10, facets: { port: [{ value: 443, count: 6 }] } } : { total: 8, facets: { port: [{ value: 80, count: 5 }] } }
+      }
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
       }

@@ -1,6 +1,227 @@
 {
   "commands": [
     {
+      "command": "parse",
+      "effect": "local",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--fields",
+        "--filters",
+        "--filename",
+        "--separator",
+        "--color",
+        "--no-color"
+      ],
+      "arguments": [
+        {
+          "name": "file",
+          "variadic": true
+        }
+      ]
+    },
+    {
+      "command": "convert",
+      "effect": "local",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--fields",
+        "--filename"
+      ],
+      "arguments": [
+        {
+          "name": "file"
+        },
+        {
+          "name": "format"
+        }
+      ]
+    },
+    {
+      "command": "alert export",
+      "operation": "CLI-021",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--filename",
+        "--max-requests"
+      ],
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "sha256": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "complete": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "path",
+          "bytes",
+          "sha256",
+          "count",
+          "complete"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "command": "alert stats",
+      "operation": "CLI-025",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--filename",
+        "--max-requests",
+        "--facets",
+        "--limit"
+      ],
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "facet": {
+                  "type": "string"
+                },
+                "value": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "facet",
+                "value",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "aggregation": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "partial"
+            ]
+          },
+          "complete": {
+            "type": "boolean"
+          },
+          "continuation": {
+            "type": "object",
+            "properties": {
+              "network": {
+                "type": "string"
+              },
+              "page": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "network",
+              "page"
+            ],
+            "additionalProperties": false
+          },
+          "saved": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "sha256": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "bytes",
+              "sha256"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "networks",
+          "total",
+          "items",
+          "count",
+          "aggregation",
+          "complete"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "command": "geonet ping",
       "operation": "OP-060",
       "effect": "active",
