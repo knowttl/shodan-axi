@@ -251,7 +251,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           }
         }
       }
-      if (process.env.SHODAN_TEST_SLICE === 'B3.2' || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.2', 'B3.3'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const info = await read(['org', 'info'])
         assert.equal(info.members[0].email, 'existing@example.test')
         assert.equal(Object.hasOwn(info, 'api_key'), false)

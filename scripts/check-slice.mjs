@@ -37,7 +37,7 @@ for (const path of paths) {
   if (id === 'B3.1' || (['B3.2', 'B3.3'].includes(id) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/monitor-read.test.mjs', 'tests/monitor-write.test.mjs', 'tests/tls.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B3.2') {
+  if (id === 'B3.2' || (id === 'B3.3' && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/organization.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
   if (id === 'B3.3') {
