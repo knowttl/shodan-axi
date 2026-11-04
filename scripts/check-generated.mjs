@@ -11,7 +11,7 @@ const commands = [
       ...(cost === 'none' ? [] : ['--allow-operation', '--query-credit-budget']), ...(cost === 'unknown' ? ['--accept-unknown-cost'] : []), ...flags],
     arguments: argument ? [{ name: argument }] : [] })),
   ...mutations.map(({ command, id, effect, cost, arguments: args }) => ({ command, operation: id, effect, cost,
-    flags: ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', ...(id === 'OP-013' ? ['--expires'] : []), ...(['OP-021', 'OP-070'].includes(id) ? ['--vulns'] : []), ...(['OP-027', 'OP-030'].includes(id) ? ['--body-file'] : [])],
+    flags: ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', ...(id === 'OP-013' ? ['--expires'] : []), ...(['OP-021', 'OP-070'].includes(id) ? ['--vulns'] : []), ...(['OP-027', 'OP-030'].includes(id) ? ['--body-file'] : []), ...(id === 'OP-037' ? ['--silent'] : [])],
     arguments: args.map(name => ({ name })) })),
   ...[{ command: 'alert clear', operation: 'CLI-017', args: [] }, { command: 'alert domain', operation: 'CLI-019', args: ['domain'] }, { command: 'alert import', operation: 'CLI-022', args: ['file'] }].map(({ command, operation, args }) => ({ command, operation, effect: 'write', cost: 'unknown',
     flags: ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', ...(operation === 'CLI-019' ? ['--triggers'] : [])], arguments: args.map(name => ({ name })) })),

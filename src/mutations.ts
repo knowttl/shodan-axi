@@ -16,7 +16,7 @@ import { windowsAcl } from './windows-acl.js'
 type Flags = Map<string, string | boolean>
 type Step = { operation: string; method: 'POST' | 'PUT' | 'DELETE'; path: string; body?: string; contentType?: string; target: string; readback: string; assign?: string }
 type Draft = { command: string; steps: Step[]; preconditions: string[]; context?: { dnsMore: boolean; futureDnsTracking: false } }
-const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--body-file', '--expires', '--vulns', '--triggers']
+const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--silent']
 const value = (flags: Flags, name: string): string | undefined => { const entry = flags.get(name); return typeof entry === 'string' ? entry : undefined }
 const digest = (input: string): string => createHash('sha256').update(input).digest('hex')
 const bad = (message: string): never => { throw new ToolError('INVALID_INPUT', message, 'Run the command with --help for valid inputs') }
@@ -38,6 +38,7 @@ const safeBody = z.object({ provider: z.string().min(1).optional(), description:
 export function isMutation(words: string[]): boolean {
   return words[0] === 'alert' && ['create', 'remove', 'update', 'enable', 'disable', 'ignore', 'unignore', 'notifier', 'clear', 'domain', 'import'].includes(words[1] ?? '')
     || words[0] === 'notifier' && ['create', 'remove', 'update'].includes(words[1] ?? '')
+    || words[0] === 'org' && ['add', 'remove'].includes(words[1] ?? '')
 }
 
 export function validateMutationFlags(flags: Flags): void {
@@ -94,7 +95,12 @@ export async function draftMutation(words: string[], flags: Flags): Promise<Draf
   const alert = words[0] === 'alert'
   const item = (operation: string, method: Step['method'], path: string, target: string, readback: string, body?: string, contentType?: string): Step => ({ operation, method, path, target, readback, ...(body === undefined ? {} : { body }), ...(contentType === undefined ? {} : { contentType }) })
   let step: Step
-  if (alert && action === 'create' && args.length === 2) {
+  if (words[0] === 'org' && ['add', 'remove'].includes(action ?? '') && args.length === 1) {
+    const user = args[0]
+    if (!user || user.length > 254 || !/^[A-Za-z0-9.!#$%&'*+/=?^_`|~-]+@[A-Za-z0-9.-]+$/.test(user)) return bad('Invalid member email')
+    const path = `/org/member/${encodeURIComponent(user)}`
+    step = item(action === 'add' ? 'OP-037' : 'OP-038', action === 'add' ? 'PUT' : 'DELETE', action === 'add' ? `${path}?notify=${!flags.has('--silent')}` : path, user, '/org')
+  } else if (alert && action === 'create' && args.length === 2) {
     const name = args[0]
     if (!name || name.length > 200) return bad('Invalid alert name')
     const networks = targets(args[1]); const expiration = value(flags, '--expires') ?? '0'
@@ -129,6 +135,7 @@ export async function draftMutation(words: string[], flags: Flags): Promise<Draf
   if (step.operation === 'OP-013') relevant.add('--expires')
   if (['OP-021', 'OP-070'].includes(step.operation)) relevant.add('--vulns')
   if (['OP-027', 'OP-030'].includes(step.operation)) relevant.add('--body-file')
+  if (step.operation === 'OP-037') relevant.add('--silent')
   for (const flag of flags.keys()) if (!relevant.has(flag)) bad(`Flag ${flag} is not available for this mutation`)
   return { command: words.slice(0, 2).join(' '), steps: [step], preconditions: [step.readback] }
 }
@@ -248,7 +255,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
     const unsigned = { version: 1, token, fingerprint: digest(`${salt}:${key}`), salt, selection: selectionBinding, draft: draftBinding, preconditions, ...(draft.command === 'alert clear' ? { snapshot: draft.steps.map(step => step.target) } : {}), created: Date.now() }
     const plan = { ...unsigned, mac: createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest('hex') }
     await writePrivate(join(planDir, `${token}.json`), JSON.stringify(plan))
-    return { status: 'preview', token, effects: draft.steps.map(({ operation, method, target, body }) => ({ operation, method, target, cost: 'unknown', ...(['OP-013', 'OP-016'].includes(operation) && body ? { networks: z.object({ filters: z.object({ ip: z.array(z.string()) }) }).parse(JSON.parse(body)).filters.ip } : {}) })), ...(draft.context ?? {}), queryCreditBudget: Number(credit), maxRequests: Number(maximum), help: 'Repeat the same command and grants with --execute --confirm <token>' }
+    return { status: 'preview', token, effects: draft.steps.map(({ operation, method, target, body }) => ({ operation, method, target, cost: 'unknown', ...(['OP-013', 'OP-016'].includes(operation) && body ? { networks: z.object({ filters: z.object({ ip: z.array(z.string()) }) }).parse(JSON.parse(body)).filters.ip } : {}), ...(operation === 'OP-037' ? { notify: !flags.has('--silent') } : {}), ...(operation === 'OP-038' ? { downgrade: true } : {}) })), ...(draft.context ?? {}), queryCreditBudget: Number(credit), maxRequests: Number(maximum), help: 'Repeat the same command and grants with --execute --confirm <token>' }
   }
   const token = value(flags, '--confirm')
   if (!token || !z.string().uuid().safeParse(token).success) return bad('Invalid confirmation token')
@@ -286,12 +293,15 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
       if (['OP-013', 'OP-027'].includes(step.operation) && !createdId) throw new Error('missing created identifier')
       if (createdId && step.assign) created.set(step.assign, createdId)
       const readbackPath = createdId ? step.operation === 'OP-013' ? `/shodan/alert/${encodeURIComponent(createdId)}/info` : `/notifier/${encodeURIComponent(createdId)}` : step.readback
-      const hasReadback = ['OP-013', 'OP-016', 'OP-019', 'OP-020', 'OP-023', 'OP-024', 'OP-027', 'OP-015', 'OP-028'].includes(step.operation)
+      const hasReadback = ['OP-013', 'OP-016', 'OP-019', 'OP-020', 'OP-023', 'OP-024', 'OP-027', 'OP-015', 'OP-028', 'OP-037', 'OP-038'].includes(step.operation)
       let readback = 'unverified'
       if (hasReadback) try {
         const observed = record.safeParse(await requestJson(selection.profile.origin, readbackPath, key))
         if (observed.success) {
-          if (step.operation === 'OP-013' || step.operation === 'OP-016') {
+          if (step.operation === 'OP-037' || step.operation === 'OP-038') {
+            const members = z.array(z.object({ email: z.string() }).passthrough()).safeParse(observed.data.members)
+            if (members.success && members.data.some(member => member.email === step.target) === (step.operation === 'OP-037')) readback = 'verified'
+          } else if (step.operation === 'OP-013' || step.operation === 'OP-016') {
             const expected = record.safeParse(step.body ? JSON.parse(step.body) : {})
             if (expected.success && observed.data.id === (createdId ?? step.target) && JSON.stringify(observed.data.filters) === JSON.stringify(expected.data.filters)) {
               if (step.operation === 'OP-016') readback = 'verified'

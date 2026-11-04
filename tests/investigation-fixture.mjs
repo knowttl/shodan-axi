@@ -17,6 +17,7 @@ export async function withInvestigation(check) {
     let mode = 'normal'
     const alerts = new Map([['alert-a', { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null }]])
     const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } }]])
+    const organization = { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }, { username: 'other', email: 'other@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' }
     const banner = (transport, timestamp) => ({ ip_str: '192.0.2.7', port: 443, transport, timestamp, data: 'synthetic banner fake-secret', location: { country_code: 'CA' }, ssl: { cert: { pubkey: { bits: 2048, type: 'rsa' } } } })
     const banners = [banner('tcp', '2026-01-01'), banner('udp', '2026-01-02'), { ...banner('tcp', '2026-01-03'), metadata: { truncated: ['http.html'] } }]
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
@@ -32,6 +33,16 @@ export async function withInvestigation(check) {
         for await (const chunk of request) chunks.push(chunk)
         const input = Buffer.concat(chunks).toString()
         calls.at(-1).body = input
+        const orgMember = /^\/org\/member\/([^/]+)$/.exec(url.pathname)
+        if (orgMember) {
+          const email = decodeURIComponent(orgMember[1])
+          if (mode !== 'org-unchanged') {
+            if (request.method === 'PUT') organization.members.push({ username: 'new', email })
+            else organization.members = organization.members.filter(member => member.email !== email)
+          }
+          if (mode === 'lost-write') { request.socket.destroy(); return }
+          response.end('{"success":true,"api_key":"issued-secret"}'); return
+        }
         const match = /^\/shodan\/alert\/([^/]+)$/.exec(url.pathname)
         if (request.method === 'POST' && url.pathname === '/notifier') {
           const fields = Object.fromEntries(new URLSearchParams(input)); const created = { id: 'notifier-new', provider: fields.provider, description: fields.description, args: fields }
@@ -137,6 +148,7 @@ export async function withInvestigation(check) {
         '/notifier': { matches: [...notifiers.values()], total: notifiers.size },
         '/notifier/provider': { email: { required: ['to'] }, telegram: { required: ['chat_id', 'token'] } },
         '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } },
+        '/org': organization,
       }
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,

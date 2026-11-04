@@ -25,6 +25,9 @@ Trends and Exploits access and redirect behavior remain unverified against live 
 For native Trends exports, choose `--save` for a query-derived filename or `--filename <path>` for an explicit destination.
 Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
 Alert and notifier reads and writes are available through the native CLI.
+Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
+An add notifies the member unless `--silent` is supplied; a removal preview reports the downgrade effect.
+The `org info --credential-file <absolute-path>` option explicitly saves an issued credential to a protected local file without displaying it.
 Writes require an exact operation grant, unknown-cost acceptance and request and credit bounds.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
 For example, preview a removal with `shodan-axi alert remove <id> --allow-operation OP-015 --accept-unknown-cost --query-credit-budget 1 --max-requests 3`.
@@ -43,7 +46,7 @@ See [the generated command inventory](command-inventory.json) for command argume
 Native commands contact the configured Shodan origin; offline verification uses controlled fakes, and live mutations require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.1 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.2 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.

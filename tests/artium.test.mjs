@@ -23,7 +23,7 @@ async function files(directory, prefix = '') {
   return result.sort()
 }
 
-test('local Artium uses the packed account tool and refuses unapproved calls', { timeout: 45000 }, async () => {
+test('local Artium uses the packed account tool and refuses unapproved calls', { timeout: 90000 }, async () => {
   const fixtureRoot = process.env.ARTIUM_FIXTURE_ROOT
   const manifestPath = process.env.ARTIUM_FIXTURE_MANIFEST
   assert.ok(fixtureRoot && isAbsolute(fixtureRoot) && manifestPath && isAbsolute(manifestPath), 'Set absolute Artium fixture root and manifest paths')
@@ -86,6 +86,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         '/notifier': { matches: [{ id: 'notifier-a', provider: 'email', args: { to: 'private@example.test' } }], total: 1 },
         '/notifier/provider': { email: { required: ['to'] } },
         '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', args: { to: 'private@example.test' } },
+        '/org': { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' },
       }
       response.end(JSON.stringify(bodies[url.pathname]))
     })
@@ -221,7 +222,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeHistoryCredentials)
         }
       }
-      if (process.env.SHODAN_TEST_SLICE === 'B3.1' || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.1', 'B3.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['alert', 'info', 'alert-a'])).id, 'alert-a')
         assert.equal((await read(['alert', 'list'])).items[0].id, 'alert-a')
         assert.equal((await read(['alert', 'triggers'])).items[0].rule, '*')
@@ -245,6 +246,22 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
             assert.equal(requests.length, beforeWrites, JSON.stringify(supplied))
             assert.equal(credentialReads, beforeWriteCredentials, JSON.stringify(supplied))
           }
+        }
+      }
+      if (process.env.SHODAN_TEST_SLICE === 'B3.2' || !process.env.SHODAN_TEST_SLICE) {
+        const info = await read(['org', 'info'])
+        assert.equal(info.members[0].email, 'existing@example.test')
+        assert.equal(Object.hasOwn(info, 'api_key'), false)
+        const before = requests.length; const beforeCredentials = credentialReads
+        for (const args of [
+          ['org', 'add', 'new@example.test'], ['org', 'add', 'new@example.test', '--silent'],
+          ['org', 'remove', 'existing@example.test'], ['org', 'info', '--credential-file', '/tmp/issued-key'],
+          ['org', 'add', 'new@example.test', '--allow-operation', 'OP-037', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
+          ['org', 'remove', 'existing@example.test', '--allow-operation', 'OP-038', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
+        ]) {
+          assert.notEqual((await run(args)).code, 0)
+          assert.equal(requests.length, before, JSON.stringify(args))
+          assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
       store.replaceCredential('shodan-axi', { auth: 'none', origin: 'https://api.shodan.io' }, 1, 'synthetic-development-user', Date.now())
