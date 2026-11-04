@@ -30,6 +30,8 @@ export async function withInvestigation(check) {
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
       if (mode.startsWith('stream') && (url.pathname.startsWith('/shodan/banners') || url.pathname.startsWith('/shodan/asn/') || url.pathname.startsWith('/shodan/countries/') || url.pathname.startsWith('/shodan/ports/') || url.pathname.startsWith('/shodan/vulns/') || url.pathname === '/shodan/custom' || url.pathname === '/shodan/alert' || url.pathname.startsWith('/shodan/alert/') || url.pathname.startsWith('/shodan/tags/') || url.pathname.startsWith('/threatnet/'))) {
         if (mode === 'stream-denied') { response.writeHead(403); response.end(); return }
+        if (mode === 'stream-rate-limited') { response.writeHead(429); response.end(); return }
+        if (mode === 'stream-connection-error') { request.socket.destroy(); return }
         if (mode === 'stream-no-headers') return
         if (mode === 'stream-idle') { response.write('\n'); return }
         if (mode === 'stream-partial') { response.end('{"ip_str":"192.0.2.'); return }

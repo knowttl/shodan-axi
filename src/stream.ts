@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import { request } from 'node:https'
-import type { IncomingMessage } from 'node:http'
+import type { ClientRequest, IncomingMessage } from 'node:http'
 import { isAbsolute, join } from 'node:path'
 import { rename } from 'node:fs/promises'
 import { z } from 'zod'
@@ -102,14 +102,14 @@ async function readStream(draft: StreamDraft, origin: string, key: string): Prom
   }
   const storageFailure = (): ToolError => new ToolError('STORAGE_ERROR', 'Stream storage could not be completed', 'Check the data directory, available space and file bounds')
   let idle: ReturnType<typeof setTimeout> | undefined
-  const stop = (why: string): void => { reason = why; response?.destroy(); req.destroy() }
+  let req: ClientRequest | undefined
+  const stop = (why: string): void => { reason = why; response?.destroy(); req?.destroy() }
   const resetIdle = (): void => { clearTimeout(idle); idle = setTimeout(() => { stop('idle-timeout') }, draft.idleTimeout) }
   const timer = setTimeout(() => { stop('max-seconds') }, draft.timeout)
   const cancelled = (): void => { stop('cancelled') }
   process.once('SIGINT', cancelled); process.once('SIGTERM', cancelled)
-  const req = request(url, { method: 'GET' })
   try {
-    response = await new Promise<IncomingMessage>((resolve, reject) => { req.once('response', resolve); req.once('error', reject); resetIdle(); req.end() })
+    response = await new Promise<IncomingMessage>((resolve, reject) => { req = request(url, { method: 'GET' }); req.once('response', resolve); req.once('error', reject); resetIdle(); req.end() })
     if (response.statusCode !== 200) throw new ToolError(response.statusCode === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR', `Stream request failed with HTTP ${response.statusCode ?? 0}`, 'Check access and retry later')
     const sse = String(response.headers['content-type'] ?? '').toLowerCase().startsWith('text/event-stream')
     const accept = async (text: string): Promise<void> => {
@@ -129,39 +129,35 @@ async function readStream(draft: StreamDraft, origin: string, key: string): Prom
       if (count >= draft.limit) stop('max-events')
     }
     resetIdle()
-    try {
-      for await (const chunk of response) {
-        if (!Buffer.isBuffer(chunk)) throw new ToolError('INVALID_RESPONSE', 'Invalid stream data', 'Inspect the stream response')
-        const prefix = chunk.subarray(0, draft.maxBytes - bytes)
-        bytes += prefix.length
-        pending = Buffer.concat([pending, prefix])
-        for (;;) {
-          const end = pending.indexOf(10); if (end < 0 || reason !== 'upstream-eof') break
-          const line = decode(pending.subarray(0, end)).replace(/\r$/, ''); pending = pending.subarray(end + 1)
-          if (sse) {
-            if (!line) { if (sseData.length) { const data = sseData.join('\n'); sseData = []; await accept(data) } }
-            else if (line.startsWith('data:')) sseData.push(line.slice(5).replace(/^ /, ''))
-          } else if (line.trim()) await accept(line)
-        }
-        if (reason === 'upstream-eof' && bytes === draft.maxBytes) stop('max-bytes')
-        if (reason !== 'upstream-eof') break
+    for await (const chunk of response) {
+      resetIdle()
+      if (!Buffer.isBuffer(chunk)) throw new ToolError('INVALID_RESPONSE', 'Invalid stream data', 'Inspect the stream response')
+      const prefix = chunk.subarray(0, draft.maxBytes - bytes)
+      bytes += prefix.length
+      pending = Buffer.concat([pending, prefix])
+      for (;;) {
+        const end = pending.indexOf(10); if (end < 0 || reason !== 'upstream-eof') break
+        const line = decode(pending.subarray(0, end)).replace(/\r$/, ''); pending = pending.subarray(end + 1)
+        if (sse) {
+          if (!line) { if (sseData.length) { const data = sseData.join('\n'); sseData = []; await accept(data) } }
+          else if (line.startsWith('data:')) sseData.push(line.slice(5).replace(/^ /, ''))
+        } else if (line.trim()) await accept(line)
       }
-    } catch (error) {
-      if (error instanceof ToolError) throw error
-      if (reason === 'upstream-eof') reason = 'upstream-error'
+      if (reason === 'upstream-eof' && bytes === draft.maxBytes) stop('max-bytes')
+      if (reason !== 'upstream-eof') break
     }
     if (reason === 'upstream-eof') decode(pending)
   } catch (error) {
     if (error instanceof ToolError && ['INVALID_RESPONSE', 'STORAGE_ERROR'].includes(error.code)) {
       failure = error; reason = error.code === 'STORAGE_ERROR' ? 'storage-error' : 'invalid-response'
     } else if (!['cancelled', 'max-seconds', 'idle-timeout'].includes(reason)) {
-      if (error instanceof ToolError) throw error
-      throw new ToolError('UPSTREAM_ERROR', 'Stream request could not be completed', 'Check connectivity and retry later')
+      failure = error instanceof ToolError ? error : new ToolError('UPSTREAM_ERROR', 'Stream request could not be completed', 'Check connectivity and retry later')
+      reason = 'upstream-error'
     }
   } finally {
-    clearTimeout(timer); clearTimeout(idle); process.removeListener('SIGINT', cancelled); process.removeListener('SIGTERM', cancelled); response?.destroy(); req.destroy()
+    clearTimeout(timer); clearTimeout(idle); process.removeListener('SIGINT', cancelled); process.removeListener('SIGTERM', cancelled); response?.destroy(); req?.destroy()
     try { await storage?.close() } catch { failure = storageFailure(); reason = 'storage-error' }
   }
   if (reason !== 'max-events' && (pending.toString('utf8').trim() || sseData.length)) partialRecordCount = 1
-  return { operation: draft.operation, events, count, debugDiscarded, partialRecordCount, stopReason: reason, bytes, upstreamConnections: 1, ...(failure ? { error: failure.code, message: failure.message, help: failure.help } : {}), ...(threat ? { domainSchemaValidated: false, contractStatus: 'source-only-unverified' } : {}) }
+  return { operation: draft.operation, limit: draft.limit, maxBytes: draft.maxBytes, timeout: draft.timeout, idleTimeout: draft.idleTimeout, events, count, debugDiscarded, partialRecordCount, stopReason: reason, bytes, upstreamConnections: 1, ...(failure ? { error: failure.code, message: failure.message, help: failure.help } : {}), ...(threat ? { domainSchemaValidated: false, contractStatus: 'source-only-unverified' } : {}) }
 }

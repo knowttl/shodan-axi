@@ -21,6 +21,98 @@ const selections = [
 ]
 const options = operation => ['--allow-operation', operation, '--accept-unknown-cost', '--limit', '2', '--max-bytes', '10000', '--timeout', '5000', '--idle-timeout', '3000']
 
+test('every stream execution exit reports its approved bounds and progress', { timeout: 60000 }, async () => {
+  await withInvestigation(async ({ root, run, setMode }) => {
+    const cases = [
+      { mode: 'stream-json', stop: 'upstream-eof', limit: 3, count: 2 },
+      { mode: 'stream-json', stop: 'max-events', count: 2 },
+      { mode: 'stream-json', stop: 'max-bytes', maxBytes: 10, count: 0, bytes: 10 },
+      { mode: 'stream-no-headers', stop: 'max-seconds', timeout: 500, count: 0, bytes: 0 },
+      { mode: 'stream-no-headers', stop: 'idle-timeout', idleTimeout: 500, count: 0, bytes: 0 },
+      { mode: 'stream-wait', stop: 'cancelled', follow: true, count: 1 },
+      { mode: 'stream-denied', stop: 'upstream-error', error: 'UPSTREAM_ERROR', count: 0, bytes: 0 },
+      { mode: 'stream-rate-limited', stop: 'upstream-error', error: 'RATE_LIMITED', count: 0, bytes: 0 },
+      { mode: 'stream-connection-error', stop: 'upstream-error', error: 'UPSTREAM_ERROR', count: 0, bytes: 0 },
+      { mode: 'stream-malformed', stop: 'invalid-response', error: 'INVALID_RESPONSE', count: 0 },
+      { mode: 'stream-json', stop: 'storage-error', error: 'STORAGE_ERROR', follow: true, maxFileBytes: 1, count: 0 },
+    ]
+    for (const item of cases) {
+      setMode(item.mode)
+      for (const follow of item.follow ? [true] : [false, true]) {
+        const bounds = { limit: item.limit ?? 2, maxBytes: item.maxBytes ?? 10000, timeout: item.timeout ?? 5000, idleTimeout: item.idleTimeout ?? 3000 }
+        const args = ['stream', '--allow-operation', 'OP-046', '--accept-unknown-cost', '--limit', String(bounds.limit), '--max-bytes', String(bounds.maxBytes), '--timeout', String(bounds.timeout), '--idle-timeout', String(bounds.idleTimeout)]
+        if (follow) args.push('--follow', '--datadir', join(root, `${item.mode}-${item.stop}`), '--max-file-bytes', String(item.maxFileBytes ?? 1000), '--retain', '1')
+        const preview = await run(args)
+        const result = await run([...args, '--execute', '--confirm', preview.body.token], {}, child => {
+          if (item.stop === 'cancelled') child.stdout.once('data', () => { child.kill('SIGINT') })
+        })
+        const summaries = result.stdout.trim().split('\n').map(line => JSON.parse(line)).filter(value => 'stopReason' in value)
+        assert.equal(summaries.length, 1, result.stdout)
+        assert.deepEqual(Object.fromEntries(Object.keys(bounds).map(name => [name, result.body[name]])), bounds)
+        assert.equal(result.body.stopReason, item.stop, result.stdout)
+        assert.equal(result.body.count, item.count)
+        assert.equal(result.body.error, item.error)
+        assert.equal(result.code, item.error ? 1 : 0)
+        assert.equal(Number.isSafeInteger(result.body.bytes), true)
+        assert.ok(result.body.bytes >= 0 && result.body.bytes <= bounds.maxBytes)
+        if (item.bytes !== undefined) assert.equal(result.body.bytes, item.bytes)
+        if (item.error) {
+          assert.equal(typeof result.body.message, 'string')
+          assert.equal(typeof result.body.help, 'string')
+        }
+      }
+    }
+  })
+})
+
+test('incoming partial records, debug records and SSE keepalives refresh idle deadlines', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    const preload = join(root, 'stream-activity.mjs')
+    await writeFile(preload, `import https from 'node:https'; import { EventEmitter } from 'node:events'; import { syncBuiltinESMExports } from 'node:module'; import { mock } from 'node:test';
+mock.timers.enable({ apis: ['setTimeout'] });
+https.request = () => {
+  const chunks = JSON.parse(process.env.TEST_STREAM_CHUNKS);
+  let destroyed = false;
+  const req = new EventEmitter();
+  const response = { statusCode: 200, headers: { 'content-type': process.env.TEST_STREAM_CONTENT_TYPE }, destroy() { destroyed = true }, async *[Symbol.asyncIterator]() {
+    for (const chunk of chunks) {
+      await new Promise(setImmediate);
+      mock.timers.tick(600);
+      if (destroyed) throw new Error('Connection closed');
+      yield Buffer.from(chunk);
+    }
+    if (process.env.TEST_STREAM_BODY_ERROR) throw new Error('Connection lost');
+  } };
+  req.end = () => { queueMicrotask(() => req.emit('response', response)); return req };
+  req.destroy = () => { destroyed = true; return req };
+  return req;
+};
+syncBuiltinESMExports();`)
+    const event = { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: 'Café' }
+    const json = JSON.stringify(event)
+    const cases = [
+      { type: 'application/json', chunks: [json.slice(0, 20), json.slice(20, 40), `${json.slice(40)}\n`], discarded: 0 },
+      { type: 'application/json', chunks: ['{"event":"debug","discarded":1}\n', '{"event":"debug","discarded":2}\n', `${json}\n`], discarded: 3 },
+      { type: 'text/event-stream', chunks: [': keepalive\n\n', ': keepalive\n\n', `data: ${json}\n\n`], discarded: 0 },
+      { type: 'text/event-stream', chunks: [`data: ${json.slice(0, 20)}`, json.slice(20, 40), `${json.slice(40)}\n\n`], discarded: 0 },
+      { type: 'application/json', chunks: [`${json}\n`], discarded: 0, bodyError: true },
+    ]
+    for (const item of cases) {
+      const args = ['stream', ...options('OP-046').map(value => value === '3000' ? '1000' : value)]
+      const preview = await run(args)
+      const result = await run([...args, '--execute', '--confirm', preview.body.token], { NODE_OPTIONS: `--import=${preload}`, TEST_STREAM_CHUNKS: JSON.stringify(item.chunks), TEST_STREAM_CONTENT_TYPE: item.type, TEST_STREAM_BODY_ERROR: item.bodyError ? '1' : '' })
+      assert.equal(result.body.stopReason, item.bodyError ? 'upstream-error' : 'upstream-eof', result.stdout)
+      assert.equal(result.body.error, item.bodyError ? 'UPSTREAM_ERROR' : undefined)
+      assert.equal(result.code, item.bodyError ? 1 : 0)
+      assert.equal(result.body.count, 1)
+      assert.equal(result.body.debugDiscarded, item.discarded)
+      assert.equal(result.body.bytes, Buffer.byteLength(item.chunks.join('')))
+      assert.deepEqual(result.body.events, [event])
+      assert.equal(result.body.idleTimeout, 1000)
+    }
+  })
+})
+
 test('each stream selector uses one confirmed connection and preserves framed events', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ run, calls, setMode }) => {
     setMode('stream-json')
@@ -32,6 +124,7 @@ test('each stream selector uses one confirmed connection and preserves framed ev
       assert.equal(calls.length, before)
       const result = await run([...args, '--execute', '--confirm', preview.body.token])
       assert.equal(result.body.stopReason, 'max-events', result.stdout)
+      assert.deepEqual({ limit: result.body.limit, maxBytes: result.body.maxBytes, timeout: result.body.timeout, idleTimeout: result.body.idleTimeout }, { limit: 2, maxBytes: 10000, timeout: 5000, idleTimeout: 3000 })
       assert.equal(result.body.count, 2)
       assert.equal(result.body.debugDiscarded, 3)
       assert.equal(result.body.partialRecordCount, 0)
