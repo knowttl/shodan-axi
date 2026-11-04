@@ -17,7 +17,7 @@ async function direct(path: string, platform: NodeJS.Platform): Promise<void> {
   if (platform === 'win32' ? actual.toLowerCase() !== resolve(path).toLowerCase() : actual !== resolve(path)) insecure()
 }
 
-export async function readPrivate(path: string, secret: boolean, options: Options = {}): Promise<string> {
+export async function readPrivateBytes(path: string, secret: boolean, options: Options = {}): Promise<Buffer> {
   const platform = options.platform ?? process.platform
   const acl = options.acl ?? windowsAcl
   await direct(path, platform)
@@ -33,8 +33,12 @@ export async function readPrivate(path: string, secret: boolean, options: Option
     if (platform !== 'win32' && (stat.uid !== process.getuid?.() || (stat.mode & (secret ? 0o077 : 0o022)) !== 0)) insecure()
     const bytes = await file.readFile()
     if (bytes.length > 1024 * 1024) insecure()
-    return bytes.toString('utf8')
+    return bytes
   } finally { await file.close() }
+}
+
+export async function readPrivate(path: string, secret: boolean, options: Options = {}): Promise<string> {
+  return (await readPrivateBytes(path, secret, options)).toString('utf8')
 }
 
 export async function writePrivate(path: string, content: string, options: Options = {}): Promise<void> {
@@ -89,5 +93,37 @@ export async function writePrivate(path: string, content: string, options: Optio
     await rm(temporary, { force: true })
     process.removeListener('SIGINT', interrupt)
     process.removeListener('SIGTERM', interrupt)
+  }
+}
+
+export async function appendPrivate(path: string, content: string): Promise<void> {
+  const directory = dirname(path)
+  await direct(directory, process.platform)
+  const parent = await lstat(directory)
+  if (!parent.isDirectory()) insecure()
+  if (process.platform === 'win32') windowsAcl(directory, 'verify', true)
+  else if (parent.uid !== process.getuid?.() || (parent.mode & 0o077) !== 0) insecure()
+  const noFollow = process.platform === 'win32' ? 0 : constants.O_NOFOLLOW
+  let file: Awaited<ReturnType<typeof open>>
+  let created = false
+  let existing: Awaited<ReturnType<typeof lstat>> | undefined
+  try { file = await open(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_EXCL | noFollow, 0o600); created = true }
+  catch (error) {
+    if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
+    await direct(path, process.platform)
+    existing = await lstat(path)
+    if (!existing.isFile() || existing.isSymbolicLink()) insecure()
+    file = await open(path, constants.O_WRONLY | constants.O_APPEND | noFollow)
+  }
+  try {
+    if (process.platform === 'win32') windowsAcl(path, created ? 'restrict' : 'verify', false)
+    const stat = await file.stat()
+    if (!stat.isFile() || (existing && (stat.dev !== existing.dev || stat.ino !== existing.ino)) || (process.platform !== 'win32' && (stat.uid !== process.getuid?.() || (stat.mode & 0o077) !== 0))) insecure()
+    await file.writeFile(content)
+    await file.sync()
+  } finally { await file.close() }
+  if (created && process.platform !== 'win32') {
+    const dir = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY)
+    try { await dir.sync() } finally { await dir.close() }
   }
 }

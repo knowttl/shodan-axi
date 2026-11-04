@@ -4,7 +4,19 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { readPrivate, writePrivate } from '../dist/private-file.js'
+import { appendPrivate, readPrivate, writePrivate } from '../dist/private-file.js'
+
+test('journal appends preserve existing contents beyond the secret-file size limit', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'shodan-journal-'))
+  const path = join(root, 'writes.log')
+  const original = 'x'.repeat(1024 * 1024 + 1)
+  try {
+    await appendPrivate(path, original)
+    await appendPrivate(path, '\nintent\n')
+    await appendPrivate(path, 'result\n')
+    assert.equal(await readFile(path, 'utf8'), `${original}\nintent\nresult\n`)
+  } finally { await rm(root, { recursive: true, force: true }) }
+})
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   test(`Windows update interrupted by ${signal} during rename backoff preserves the configuration`, async t => {

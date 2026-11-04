@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { createTestTls } from './tls-fixture.mjs'
 
 const hash = value => createHash('sha256').update(value).digest('hex')
 const moduleAt = (root, path) => import(pathToFileURL(join(root, path)).href)
@@ -36,7 +37,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
   assert.equal(await realpath(manifest.installedPackage), resolve(manifest.installedPackage), 'Host package must not be a symlink')
   const temporary = await mkdtemp(join(tmpdir(), 'shodan-artium-'))
   const previousNodeEnv = process.env.NODE_ENV
-  let app, db, fake
+  let app, db, fake, healthSchedule, previousHealthTick
   try {
     const packed = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', temporary, '--json'], { encoding: 'utf8' }))
     assert.equal(hash(await readFile(join(temporary, packed[0].filename))), manifest.sha256, 'Current tarball differs from the host package')
@@ -54,11 +55,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     assert.deepEqual(JSON.parse(await readFile(join(fixtureRoot, 'dist/tools/inventories/shodan-axi.json'), 'utf8')), inventory)
     for (const item of inventory.sources) assert.equal(hash(await readFile(join(manifest.installedPackage, item.path))), item.sha256, item.path)
 
-    const keyFile = join(temporary, 'fake-key.pem')
-    const caFile = join(temporary, 'fake-ca.pem')
-    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyFile, '-out', caFile, '-days', '1',
-      '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost', '-addext', 'basicConstraints=critical,CA:TRUE',
-      '-addext', 'keyUsage=critical,keyCertSign,cRLSign,digitalSignature'], { stdio: 'ignore' })
+    const { keyFile, certFile: caFile } = await createTestTls(temporary, 'DNS:localhost')
     const requests = []
     fake = createServer({ key: await readFile(keyFile), cert: await readFile(caFile) }, (request, response) => {
       const url = new URL(request.url, 'https://localhost')
@@ -83,6 +80,12 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         '/shodan/query/search': { total: 1, matches: [{ title: 'Synthetic TLS', query: 'port:443' }] },
         '/shodan/query/tags': { total: 1, matches: [{ value: 'test', count: 3 }] },
         '/api/v1/search/filters': ['all', 'has_ipv6'], '/api/v1/search/facets': ['country', 'asn'],
+        '/shodan/alert/alert-a/info': { id: 'alert-a', name: 'Synthetic', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null },
+        '/shodan/alert/info': [{ id: 'alert-a', name: 'Synthetic', filters: { ip: ['192.0.2.0/24'] }, expiration: null }],
+        '/shodan/alert/triggers': [{ name: 'any', rule: '*', description: 'Any service' }],
+        '/notifier': { matches: [{ id: 'notifier-a', provider: 'email', args: { to: 'private@example.test' } }], total: 1 },
+        '/notifier/provider': { email: { required: ['to'] } },
+        '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', args: { to: 'private@example.test' } },
       }
       response.end(JSON.stringify(bodies[url.pathname]))
     })
@@ -93,7 +96,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
 
     process.env.NODE_ENV = 'test'
     const [{ openStore, createCredentialStore }, { EnvironmentKeyProvider }, { EmbeddedSecretSource }, { createShodanAdapter },
-      { SharedIdentityResolver }, { Runner }, { loadTrustedCa }, { Audit }, { toolPaths }, { createApp }, { seedToolUser, issueTestAccessToken }, { SessionStore }] = await Promise.all([
+      { SharedIdentityResolver }, { Runner }, { loadTrustedCa }, { Audit }, { toolPaths, healthDefaults }, { createApp }, { seedToolUser, issueTestAccessToken }, { SessionStore }] = await Promise.all([
       moduleAt(fixtureRoot, 'dist/src/server/store/db.js'), moduleAt(fixtureRoot, 'dist/src/server/store/key-provider.js'),
       moduleAt(fixtureRoot, 'dist/src/server/store/secret-source.js'), moduleAt(fixtureRoot, 'dist/src/server/adapters/shodan.js'),
       moduleAt(fixtureRoot, 'dist/src/server/policy/identity-resolver.js'), moduleAt(fixtureRoot, 'dist/src/server/runner/runner.js'),
@@ -101,6 +104,9 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       moduleAt(fixtureRoot, 'dist/src/server/config.js'), moduleAt(fixtureRoot, 'dist/src/server/app.js'),
       moduleAt(fixtureRoot, 'dist/test/fixtures/tokens.js'), moduleAt(fixtureRoot, 'dist/src/cli/session.js'),
     ])
+    healthSchedule = healthDefaults
+    previousHealthTick = healthDefaults.tickMs
+    healthDefaults.tickMs = 600000
     const provider = new EnvironmentKeyProvider({ ARTIUM_AXI_MASTER_KEY: Buffer.alloc(32, 1).toString('base64') })
     db = openStore(join(temporary, 'artium.db'), provider)
     await seedToolUser(db)
@@ -215,6 +221,32 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeHistoryCredentials)
         }
       }
+      if (process.env.SHODAN_TEST_SLICE === 'B3.1' || !process.env.SHODAN_TEST_SLICE) {
+        assert.equal((await read(['alert', 'info', 'alert-a'])).id, 'alert-a')
+        assert.equal((await read(['alert', 'list'])).items[0].id, 'alert-a')
+        assert.equal((await read(['alert', 'triggers'])).items[0].rule, '*')
+        assert.equal((await read(['notifier', 'list'])).items[0].id, 'notifier-a')
+        assert.deepEqual((await read(['notifier', 'providers'])).email.required, ['to'])
+        const detail = await read(['notifier', 'get', 'notifier-a'])
+        assert.equal(detail.id, 'notifier-a')
+        assert.equal(Object.hasOwn(detail, 'args'), false)
+        const beforeWrites = requests.length; const beforeWriteCredentials = credentialReads
+        for (const args of [
+          ['alert', 'create', 'synthetic', '192.0.2.7'], ['alert', 'remove', 'alert-a'], ['alert', 'update', 'alert-a', '192.0.2.7'],
+          ['alert', 'enable', 'alert-a', 'any'], ['alert', 'disable', 'alert-a', 'any'], ['alert', 'ignore', 'alert-a', 'any', '192.0.2.7:443'],
+          ['alert', 'unignore', 'alert-a', 'any', '192.0.2.7:443'], ['alert', 'notifier', 'add', 'alert-a', 'notifier-a'],
+          ['alert', 'notifier', 'remove', 'alert-a', 'notifier-a'], ['notifier', 'create', '--body-file', 'input.json'],
+          ['notifier', 'remove', 'notifier-a'], ['notifier', 'update', 'notifier-a', '--body-file', 'input.json'],
+          ['alert', 'ignore', 'alert-a', 'any', '192.0.2.7:443', '--vulns', 'CVE-2020-0001'], ['alert', 'clear'],
+          ['alert', 'domain', 'example.test'], ['alert', 'import', 'input.json'],
+        ]) {
+          for (const supplied of [args, [...args, '--allow-operation', 'OP-013,OP-015,OP-016,OP-019,OP-020,OP-021,OP-022,OP-023,OP-024,OP-027,OP-028,OP-030,OP-070', '--accept-unknown-cost', '--query-credit-budget', '20', '--max-requests', '40', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001']]) {
+            assert.notEqual((await run(supplied)).code, 0)
+            assert.equal(requests.length, beforeWrites, JSON.stringify(supplied))
+            assert.equal(credentialReads, beforeWriteCredentials, JSON.stringify(supplied))
+          }
+        }
+      }
       store.replaceCredential('shodan-axi', { auth: 'none', origin: 'https://api.shodan.io' }, 1, 'synthetic-development-user', Date.now())
       const snapshot = await read(['internetdb', 'host', '192.0.2.7'])
       assert.deepEqual(snapshot.vulns, ['CVE-2020-0001'])
@@ -226,6 +258,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     if (previousNodeEnv === undefined) delete process.env.NODE_ENV
     else process.env.NODE_ENV = previousNodeEnv
     if (app) await app.close()
+    if (healthSchedule) healthSchedule.tickMs = previousHealthTick
     if (db) db.close()
     if (fake) await new Promise(resolve => fake.close(resolve))
     await rm(temporary, { recursive: true, force: true })

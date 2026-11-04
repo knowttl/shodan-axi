@@ -550,6 +550,117 @@
       ]
     },
     {
+      "command": "alert info",
+      "operation": "OP-014",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "command": "alert list",
+      "operation": "OP-017",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--expired"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "alert triggers",
+      "operation": "OP-018",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "notifier list",
+      "operation": "OP-025",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "notifier providers",
+      "operation": "OP-026",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "notifier get",
+      "operation": "OP-029",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        }
+      ]
+    },
+    {
       "command": "myip --ipv6",
       "operation": "OP-072",
       "effect": "read",
@@ -565,6 +676,424 @@
         "--timeout"
       ],
       "arguments": []
+    },
+    {
+      "command": "alert create",
+      "operation": "OP-013",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--expires"
+      ],
+      "arguments": [
+        {
+          "name": "name"
+        },
+        {
+          "name": "targets"
+        }
+      ]
+    },
+    {
+      "command": "alert remove",
+      "operation": "OP-015",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "command": "alert update",
+      "operation": "OP-016",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "targets"
+        }
+      ]
+    },
+    {
+      "command": "alert enable",
+      "operation": "OP-019",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "trigger"
+        }
+      ]
+    },
+    {
+      "command": "alert disable",
+      "operation": "OP-020",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "trigger"
+        }
+      ]
+    },
+    {
+      "command": "alert ignore",
+      "operation": "OP-021",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--vulns"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "trigger"
+        },
+        {
+          "name": "service"
+        }
+      ]
+    },
+    {
+      "command": "alert unignore",
+      "operation": "OP-022",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "trigger"
+        },
+        {
+          "name": "service"
+        }
+      ]
+    },
+    {
+      "command": "alert notifier add",
+      "operation": "OP-023",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "notifier"
+        }
+      ]
+    },
+    {
+      "command": "alert notifier remove",
+      "operation": "OP-024",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "notifier"
+        }
+      ]
+    },
+    {
+      "command": "notifier create",
+      "operation": "OP-027",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--body-file"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "notifier remove",
+      "operation": "OP-028",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "command": "notifier update",
+      "operation": "OP-030",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--body-file"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        }
+      ]
+    },
+    {
+      "command": "alert ignore",
+      "operation": "OP-070",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--vulns"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        },
+        {
+          "name": "trigger"
+        },
+        {
+          "name": "service"
+        }
+      ]
+    },
+    {
+      "command": "alert clear",
+      "operation": "CLI-017",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "alert domain",
+      "operation": "CLI-019",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--triggers"
+      ],
+      "arguments": [
+        {
+          "name": "domain"
+        }
+      ]
+    },
+    {
+      "command": "alert import",
+      "operation": "CLI-022",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "file"
+        }
+      ]
     },
     {
       "command": "",
