@@ -1,6 +1,8 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
+import { getStaticTOMLValue, parseTOML } from 'toml-eslint-parser'
+import type { AST } from 'toml-eslint-parser'
 import { z } from 'zod'
 import { ToolError } from './errors.js'
 
@@ -16,6 +18,43 @@ async function save(path: string, content: string): Promise<boolean> {
   await mkdir(dirname(path), { recursive: true })
   await writeFile(path, content)
   return true
+}
+
+function enableCodexHooks(config: string): string {
+  try {
+    const ast = parseTOML(config, { tomlVersion: '1.0' })
+    const settings = z.looseObject({ features: z.looseObject({ hooks: z.boolean().optional() }).optional() }).parse(getStaticTOMLValue(ast))
+    if (settings.features?.hooks === true) return config
+    const body = ast.body[0].body
+    const table = body.find((node): node is AST.TOMLTable => node.type === 'TOMLTable' && node.kind === 'standard' && node.resolvedKey.length === 1 && node.resolvedKey[0] === 'features')
+    const entries = body.filter((node): node is AST.TOMLKeyValue => node.type === 'TOMLKeyValue')
+    const find = (entries: AST.TOMLKeyValue[], path: string[]): AST.TOMLKeyValue | undefined => {
+      for (const entry of entries) {
+        const keys = getStaticTOMLValue(entry.key)
+        if (!keys.every((key, index) => key === path[index])) continue
+        if (keys.length === path.length) return entry
+        if (entry.value.type === 'TOMLInlineTable') {
+          const nested = find(entry.value.body, path.slice(keys.length))
+          if (nested) return nested
+        }
+      }
+    }
+    const hook = find(entries, ['features', 'hooks']) ?? find(table?.body ?? [], ['hooks'])
+    const features = find(entries, ['features'])
+    let updated: string
+    if (hook) updated = `${config.slice(0, hook.value.range[0])}true${config.slice(hook.value.range[1])}`
+    else if (features?.value.type === 'TOMLInlineTable') {
+      const end = features.value.range[1] - 1
+      updated = `${config.slice(0, end)}${features.value.body.length ? ', ' : ''}hooks = true${config.slice(end)}`
+    } else if (table) {
+      const end = config.indexOf('\n', table.key.range[1])
+      updated = end === -1 ? `${config}\nhooks = true\n` : `${config.slice(0, end + 1)}hooks = true\n${config.slice(end + 1)}`
+    } else updated = `features.hooks = true\n${config}`
+    parseTOML(updated, { tomlVersion: '1.0' })
+    return updated
+  } catch {
+    throw new ToolError('INVALID_INPUT', 'Cannot safely enable Codex hooks in config.toml', 'Use valid TOML with a features table and a boolean hooks setting, then retry setup codex')
+  }
 }
 
 export async function setup(target: string): Promise<{ target: string, changed: boolean }> {
@@ -43,19 +82,13 @@ export async function setup(target: string): Promise<{ target: string, changed: 
   retained.push({ hooks: [{ type: 'command', command }] })
   hooks.SessionStart = retained
   settings.hooks = hooks
-  let changed = await save(path, `${JSON.stringify(settings, null, 2)}\n`)
+  let configPath: string | undefined
+  let updated: string | undefined
   if (target === 'codex') {
-    const configPath = join(root, 'config.toml')
-    const config = await readOptional(configPath)
-    const section = /^\[features\][^\n]*(?:\n|$)(?:(?![ \t]*\[)[^\n]*(?:\n|$))*/m.exec(config)
-    let updated: string
-    if (!section) updated = `${config}${config && !config.endsWith('\n') ? '\n' : ''}\n[features]\nhooks = true\n`
-    else {
-      const value = /^[ \t]*hooks[ \t]*=.*$/m
-      const replacement = value.test(section[0]) ? section[0].replace(value, 'hooks = true') : `${section[0].replace(/\n?$/, '\n')}hooks = true\n`
-      updated = config.replace(section[0], replacement)
-    }
-    changed = await save(configPath, updated) || changed
+    configPath = join(root, 'config.toml')
+    updated = enableCodexHooks(await readOptional(configPath))
   }
+  let changed = await save(path, `${JSON.stringify(settings, null, 2)}\n`)
+  if (configPath !== undefined && updated !== undefined) changed = await save(configPath, updated) || changed
   return { target, changed }
 }

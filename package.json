@@ -40,6 +40,7 @@
     "exceljs": "4.4.0",
     "ipaddr.js": "2.2.0",
     "jpeg-js": "0.4.4",
+    "toml-eslint-parser": "1.0.3",
     "zod": "4.1.12"
   },
   "devDependencies": {
