@@ -33,10 +33,10 @@ export function transferDraft(words: string[], flags: Flags): Draft {
   return { dataset, name, destination: resolve(filename), maxBytes: Number(maxBytes), maxRequests: Number(maxRequests), mode: flags.has('--resume') ? 'resume' : flags.has('--restart') ? 'restart' : 'new' }
 }
 
-function approvedUrl(input: string): URL {
+function approvedUrl(input: string, approvedOrigins: readonly string[]): URL {
   let url: URL
   try { url = new URL(input) } catch { throw new ToolError('INVALID_RESPONSE', 'Invalid dataset location', 'Inspect dataset metadata') }
-  if (url.protocol !== 'https:' || url.username || url.password || !storageOrigins.includes(url.origin)) throw new ToolError('STORAGE_POLICY_UNAVAILABLE', `Dataset storage host is not reviewed: ${url.hostname}`, 'Review the storage destination policy')
+  if (url.protocol !== 'https:' || url.username || url.password || !approvedOrigins.includes(url.origin)) throw new ToolError('STORAGE_POLICY_UNAVAILABLE', `Dataset storage host is not reviewed: ${url.hostname}`, 'Review the storage destination policy')
   return url
 }
 
@@ -57,7 +57,7 @@ async function range(url: URL, start: number, end: number, total: number, versio
   })
 }
 
-export async function transfer(draft: Draft, flags: Flags, selection: Selection, key: string): Promise<unknown> {
+export async function transfer(draft: Draft, flags: Flags, selection: Selection, key: string, approvedOrigins: readonly string[] = storageOrigins): Promise<unknown> {
   const response = metadataSchema.safeParse(await requestJson(selection.profile.origin, `/shodan/data/${encodeURIComponent(draft.dataset)}`, key))
   if (!response.success) throw new ToolError('INVALID_RESPONSE', 'Invalid dataset file listing', 'Inspect the service response')
   const matches = response.data.filter(item => item.name === draft.name)
@@ -65,7 +65,7 @@ export async function transfer(draft: Draft, flags: Flags, selection: Selection,
   const item = matches[0]
   if (!item || item.size > draft.maxBytes) throw new ToolError('LIMIT_REACHED', 'Dataset exceeds the byte limit', 'Increase the bound or select another file')
   if (Math.ceil(item.size / (1024 * 1024)) + 1 > draft.maxRequests) throw new ToolError('LIMIT_REACHED', 'Dataset exceeds the request limit', 'Increase the request bound')
-  const url = approvedUrl(item.url)
+  const url = approvedUrl(item.url, approvedOrigins)
   const root = stateRoot(); const directory = join(root, 'plans'); const signingKey = await planKey(root)
   const binding = digest(JSON.stringify({ draft, item, selection, credential: digest(key) }))
   if (!flags.has('--execute')) {

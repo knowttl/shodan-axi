@@ -36,7 +36,8 @@ Each input file is bounded to 1 MiB on disk, including uncompressed files, and g
 Partial statistics saved to a file use a `.partial` suffix.
 Hosted upload and file-based transformations are deferred pending a defined upload boundary.
 `data list` lists datasets; `data list --dataset <name>` lists file metadata without exposing signed URLs.
-Real dataset downloads are disabled pending a reviewed storage-destination policy.
+Real dataset retrieval is deferred for this release by owner decision.
+The approved storage-host list is empty, so packaged `data download` refuses before credential access or network requests.
 `download <query>` and `alert download` preview the selected query, destination, size and credit bounds before requiring exact confirmation.
 These native exports require `--allow-operation OP-003`, `--query-credit-budget`, `--max-requests`, `--max-bytes`, `--limit` and `--filename`.
 Export execution reports `total: null` when bounds prevent visiting every selected network; otherwise `total` covers the full selection.
