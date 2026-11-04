@@ -17,7 +17,7 @@ Use `--json` for JSON output.
 The API key is supplied through the referenced environment variable or a private absolute file, never a command argument.
 `doctor` makes one account information request and does not establish access to other API families.
 Queries that may consume credits require an exact operation grant and a credit budget.
-Unknown-cost reads also require `--accept-unknown-cost` and an explicit request cap.
+Unknown-cost investigation reads also require `--accept-unknown-cost` and an explicit request cap; stream bounds are described below.
 Hosted use admits free reads and refuses all writes before retrieving credentials; chargeable or unknown-cost reads and saved files are available through the native CLI.
 `internetdb host` uses no API key; `myip --ipv6` requires an IPv6 transport and never falls back to IPv4.
 Honeyscore and services remain source-only and unverified.
@@ -50,8 +50,12 @@ Hosted execution refuses chargeable exports and dataset transfers before retriev
 Native `stream` supports one of `--asn`, `--countries`, `--ports`, `--vulns`, `--custom-filters`, `--alert` or `--tags`, or the unfiltered banner stream.
 `threatnet events`, `threatnet backscatter` and `threatnet ssh` select the separate Threatnet streams.
 Streams require an exact `--allow-operation`, `--accept-unknown-cost`, `--limit`, `--max-bytes`, `--timeout` and `--idle-timeout`, followed by the same protected preview and confirmation used for other active operations.
-Timeouts use milliseconds; results report their stop reason, discarded debug count and incomplete record count, and connections are never automatically retried.
-Native `--follow` emits JSON records and requires an absolute `--datadir`, `--max-file-bytes` and `--retain`; gzip output rotates by UTC day or file size using the selected `--compresslevel`.
+Timeouts use milliseconds; the idle timer starts at dispatch and resets on each incoming chunk, including debug records and SSE keepalives.
+Every stream execution ends with one summary carrying the approved `limit`, `maxBytes`, `timeout` and `idleTimeout`, accepted event `count`, consumed `bytes`, stop reason, discarded debug count and incomplete record count.
+Execution failures attach their error to that summary and exit nonzero; connections are never automatically retried.
+Native `--follow` requires `--json` or `--output json`, an absolute `--datadir`, `--max-file-bytes` and `--retain`; it emits one JSON object containing `event` per accepted record, followed by the summary.
+Follow mode retains the same read bounds; gzip JSONL files rotate by UTC day or compressed file size, and `--retain` bounds the number of retained stream files.
+`--compresslevel` accepts 0 through 9, defaults to 6 and applies across rotations.
 Stream connections are refused when `SHODAN_AXI_READ_ONLY=true`.
 Hosted execution refuses every stream operation before retrieving credentials.
 Threatnet event schemas and tag-filtered stream availability remain unverified against the live service.
@@ -91,7 +95,8 @@ Notifier creation and updates use a private absolute `--body-file` containing JS
 `alert import <absolute-path>` accepts a private JSON array or JSONL file, optionally gzip-compressed, and previews ordered notifier creation, alert creation, trigger, ignore and notifier attachment steps.
 See [the generated command inventory](command-inventory.json) for command arguments, flags, operation grants and public output schemas for free reads.
 Those reads omit unknown vendor fields, including provider-issued credential fields, in both hosted and native output.
-GeoNet contacts `https://geonet.shodan.io` independently of profile configuration; other native network commands use the configured Shodan origin or their service-specific endpoints.
+GeoNet contacts `https://geonet.shodan.io` independently of profile configuration.
+Streams use the selected profile's `streamOrigin`, defaulting to `https://stream.shodan.io`; other native network commands use the configured Shodan origin or their service-specific endpoints.
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
