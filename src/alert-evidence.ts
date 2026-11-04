@@ -8,7 +8,6 @@ import { clean } from './redact.js'
 import { requestJson } from './vendor.js'
 
 type Flags = Map<string, string | boolean>
-const record = z.record(z.string(), z.unknown())
 const fail = (message: string): never => { throw new ToolError('INVALID_INPUT', message, 'Inspect the command arguments') }
 const value = (flags: Flags, name: string): string | undefined => { const item = flags.get(name); return typeof item === 'string' ? item : undefined }
 const number = (flags: Flags, name: string, fallback: number, max: number): number => {
@@ -19,16 +18,14 @@ const number = (flags: Flags, name: string, fallback: number, max: number): numb
 }
 export function validateAlertEvidence(words: string[], flags: Flags): void {
   const command = words[1]
-  const allowed = ['--json', '--output', '--help', '--config', '--profile', '--filename', '--max-requests', ...(command === 'stats' ? ['--facets', '--limit', '--exact', '--allow-operation', '--query-credit-budget', '--max-pages', '--max-bytes'] : [])]
+  const allowed = ['--json', '--output', '--help', '--config', '--profile', '--filename', '--max-requests', ...(command === 'stats' ? ['--facets', '--limit'] : [])]
   for (const flag of flags.keys()) if (!allowed.includes(flag)) fail(`Flag ${flag} is not available for this command`)
   if (words.length !== 2 || !['export', 'stats'].includes(command ?? '')) fail('Invalid alert command')
   number(flags, '--max-requests', 10, 1000)
   if (command === 'stats') {
-    number(flags, '--limit', 10, 1000); number(flags, '--max-pages', 1, 1000); number(flags, '--max-bytes', 1024 * 1024, 10 * 1024 * 1024)
+    number(flags, '--limit', 10, 1000)
     const facets = (value(flags, '--facets') ?? 'port').split(',')
     if (!facets.every(item => /^[A-Za-z0-9_.-]+(?::[1-9]\d*)?$/.test(item))) fail('Invalid facet selection')
-    if (!flags.has('--exact') && ['--allow-operation', '--query-credit-budget', '--max-pages', '--max-bytes'].some(flag => flags.has(flag))) fail('Enumeration flags require --exact')
-    if (flags.has('--exact') && (value(flags, '--allow-operation') !== 'OP-003' || number(flags, '--query-credit-budget', 0, 1000) < 1)) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Exact aggregation requires a search grant and credit budget', 'Pass --allow-operation OP-003 and --query-credit-budget')
   }
 }
 
@@ -66,7 +63,6 @@ function union(networks: string[]): string[] {
 
 const monitor = z.object({ id: z.string(), name: z.string(), filters: z.object({ ip: z.array(z.string()) }), created: z.string().optional(), expiration: z.string().nullable().optional(), triggers: z.record(z.string().regex(/^[A-Za-z0-9_-]+$/), z.object({ ignore: z.array(z.union([z.string(), z.object({ ip: z.string(), port: z.number().int() })])).optional() })).optional(), notifiers: z.array(z.union([z.string(), z.object({ id: z.string(), provider: z.string().optional(), description: z.string().optional() })])).optional() })
 const countPage = z.object({ total: z.number().int().nonnegative(), facets: z.record(z.string(), z.array(z.object({ value: z.union([z.string(), z.number()]), count: z.number().int().nonnegative() }))).default({}) })
-const searchPage = z.object({ total: z.number().int().nonnegative(), matches: z.array(record) })
 
 export async function alertEvidence(words: string[], flags: Flags, selection: Selection, key: string): Promise<unknown> {
   const maxRequests = number(flags, '--max-requests', 10, 1000)
@@ -93,42 +89,14 @@ export async function alertEvidence(words: string[], flags: Flags, selection: Se
     if (existing) existing.count += count
     else buckets.set(id, { facet, value: bucket, count })
   }
-  if (flags.has('--exact')) {
-    const budget = number(flags, '--query-credit-budget', 0, 1000); const pages = number(flags, '--max-pages', 1, 1000); const maxBytes = number(flags, '--max-bytes', 1024 * 1024, 10 * 1024 * 1024)
-    const seen = new Set<string>(); let used = 0; let bytes = 0
-    for (const network of networks) {
-      for (let page = 1; ; page++) {
-        if (used >= budget || used >= pages || requests >= maxRequests) { complete = false; continuation = { network, page }; break }
-        const raw = await dispatch('/shodan/host/search', { query: `net:${network}`, page: String(page) }); used++
-        const length = Buffer.byteLength(JSON.stringify(raw)); if (bytes + length > maxBytes) { complete = false; continuation = { network, page }; break }; bytes += length
-        const result = searchPage.safeParse(raw)
-        if (!result.success) throw new ToolError('INVALID_RESPONSE', 'Invalid search response', 'Inspect the service response')
-        for (const row of result.data.matches) {
-          if (typeof row.ip_str !== 'string' || typeof row.port !== 'number' || typeof row.transport !== 'string') throw new ToolError('INVALID_RESPONSE', 'Invalid service identity', 'Inspect the service response')
-          const id = JSON.stringify([row.ip_str, row.port, row.transport]); if (seen.has(id)) continue
-          seen.add(id)
-          for (const requestedFacet of requested) {
-            const facet = requestedFacet.split(':')[0] ?? ''; const source = facet === 'country' ? 'location.country_code' : facet
-            const result = source.split('.').reduce<unknown>((item, part) => { const object = record.safeParse(item); return object.success ? object.data[part] : undefined }, row)
-            if (typeof result === 'string' || typeof result === 'number') add(facet, result, 1)
-          }
-        }
-        if (page * 100 >= result.data.total) break
-        if (result.data.matches.length === 0) { complete = false; continuation = { network, page }; break }
-      }
-      if (!complete) break
-    }
-    total = seen.size
-  } else {
-    for (const network of networks) {
-      if (requests >= maxRequests) { complete = false; continuation = { network, page: 1 }; break }
-      const response = countPage.safeParse(await dispatch('/shodan/host/count', { query: `net:${network}`, facets: requested.join(',') }))
-      if (!response.success) throw new ToolError('INVALID_RESPONSE', 'Invalid count response', 'Inspect the service response')
-      total += response.data.total
-      for (const [facet, entries] of Object.entries(response.data.facets)) if (requested.some(item => item.split(':')[0] === facet)) for (const entry of entries) add(facet, entry.value, entry.count)
-    }
-    if (networks.length) complete = false
+  for (const network of networks) {
+    if (requests >= maxRequests) { complete = false; continuation = { network, page: 1 }; break }
+    const response = countPage.safeParse(await dispatch('/shodan/host/count', { query: `net:${network}`, facets: requested.join(',') }))
+    if (!response.success) throw new ToolError('INVALID_RESPONSE', 'Invalid count response', 'Inspect the service response')
+    total += response.data.total
+    for (const [facet, entries] of Object.entries(response.data.facets)) if (requested.some(item => item.split(':')[0] === facet)) for (const entry of entries) add(facet, entry.value, entry.count)
   }
+  if (networks.length) complete = false
   const counts = new Map<string, number>()
   const items = [...buckets.values()].sort((a, b) => b.count - a.count).filter(item => {
     const count = counts.get(item.facet) ?? 0

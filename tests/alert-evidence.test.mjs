@@ -29,7 +29,7 @@ test('alert statistics normalize overlap and label top buckets partial', { timeo
     assert.equal(result.body.aggregation, 'partial')
     assert.equal(result.body.complete, false)
     assert.equal(result.body.saved.path, `${filename}.partial`)
-    assert.equal(calls.filter(call => call.path === '/shodan/host/count').length, 1)
+    assert.deepEqual(calls.map(call => call.path), ['/shodan/alert/info', '/shodan/host/count'])
   })
 })
 
@@ -65,25 +65,13 @@ test('facet limits apply independently to each facet', { timeout: 30000 }, async
   })
 })
 
-test('exact statistics require a grant and return bounded partial continuation', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, calls, setMode }) => {
-    setMode('alert-exact-partial')
-    assert.equal((await run(['alert', 'stats', '--exact'])).body.error, 'CREDIT_BUDGET_REQUIRED')
+test('alert statistics reject enumeration flags before credentials or requests', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, calls }) => {
+    const env = { SHODAN_AXI_CONFIG: join(root, 'missing-config') }
+    for (const flags of [['--exact'], ['--allow-operation', 'OP-003'], ['--query-credit-budget', '1'], ['--max-pages', '1'], ['--max-bytes', '1024']]) {
+      const result = await run(['alert', 'stats', ...flags], env)
+      assert.equal(result.body.error, 'INVALID_INPUT')
+    }
     assert.equal(calls.length, 0)
-    const result = await run(['alert', 'stats', '--exact', '--allow-operation', 'OP-003', '--query-credit-budget', '1', '--max-pages', '1', '--max-requests', '2'])
-    assert.equal(result.body.aggregation, 'partial')
-    assert.equal(result.body.continuation.page, 2)
-    assert.equal(calls.filter(call => call.path === '/shodan/host/search').length, 1)
-  })
-})
-
-test('exact statistics deduplicate matching service identities', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, setMode }) => {
-    setMode('alert-exact-complete')
-    const result = await run(['alert', 'stats', '--exact', '--allow-operation', 'OP-003', '--query-credit-budget', '1', '--max-pages', '1', '--max-requests', '2'])
-    assert.equal(result.body.complete, true)
-    assert.equal(result.body.aggregation, 'exact')
-    assert.equal(result.body.total, 2)
-    assert.deepEqual(result.body.items, [{ facet: 'port', value: 443, count: 2 }])
   })
 })

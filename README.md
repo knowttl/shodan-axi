@@ -29,7 +29,7 @@ Alert and notifier reads and writes are available through the native CLI.
 `convert <file> <format>` produces CSV, KML, GeoJSON (`geo.json`), XLSX or extracted JPEG images without credentials or network access.
 Inputs are bounded to 1 MiB compressed and 10 MiB decompressed; outputs use private paths and existing conversion outputs are not overwritten.
 `alert export` saves secret-free alert configuration as gzip JSONL.
-`alert stats` normalizes overlapping networks and labels top-facet results partial; `--exact` requires an OP-003 grant, a query-credit budget and bounded enumeration.
+`alert stats` uses free count-facet reads, normalizes overlapping networks and labels top-facet results partial.
 Partial statistics saved to a file use a `.partial` suffix.
 Hosted upload and file-based transformations are deferred pending a defined upload boundary.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.

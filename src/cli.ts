@@ -33,7 +33,7 @@ export async function main(args: string[]): Promise<void> {
     const flags = new Map<string, string | boolean>()
     const words: string[] = []
     const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename', '-f': '--filters' }
-    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force', '--exact']
+    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force']
     const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers']
     for (let index = 0; index < args.length; index++) {
       const input = args[index]
@@ -70,7 +70,7 @@ export async function main(args: string[]): Promise<void> {
     }
     if (words[0] === 'alert' && ['stats', 'export'].includes(words[1] ?? '')) {
       validateAlertEvidence(words, flags)
-      if (flags.has('--help')) { output({ command, help: 'Use --filename for a private output. Exact statistics require --exact, --allow-operation OP-003 and an explicit query-credit budget.' }, json); return }
+      if (flags.has('--help')) { output({ command, help: 'Use --filename for a private output. Statistics use free count-facet reads with --facets, --limit and --max-requests; top-facet results are partial.' }, json); return }
       const selection = await select(configPath(option('--config')), option('--profile'))
       key = await secret(selection)
       output(clean(await alertEvidence(words, flags, selection, key), key), json)

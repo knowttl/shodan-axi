@@ -307,7 +307,6 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           ['parse', 'input.json.gz'], ['parse', '/tmp/input.json.gz', '--filename', '/tmp/result.json.gz'],
           ['convert', 'input.json.gz', 'csv'], ['convert', '/tmp/input.json.gz', 'xlsx', '--filename', '/tmp/result.xlsx'],
           ['alert', 'export', '--filename', '/tmp/alerts.json.gz'],
-          ['alert', 'stats', '--exact', '--allow-operation', 'OP-003', '--query-credit-budget', '1', '--max-requests', '2'],
         ]) {
           assert.notEqual((await run(args)).code, 0)
           assert.equal(requests.length, before, JSON.stringify(args))

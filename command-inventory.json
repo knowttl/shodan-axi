@@ -95,15 +95,6 @@
       "operation": "CLI-025",
       "effect": "read",
       "cost": "none",
-      "variantCosts": [
-        {
-          "flags": [
-            "--exact"
-          ],
-          "operation": "OP-003",
-          "cost": "query"
-        }
-      ],
       "flags": [
         "--json",
         "--output",
@@ -113,12 +104,7 @@
         "--filename",
         "--max-requests",
         "--facets",
-        "--limit",
-        "--exact",
-        "--allow-operation",
-        "--query-credit-budget",
-        "--max-pages",
-        "--max-bytes"
+        "--limit"
       ],
       "arguments": [],
       "outputSchema": {
