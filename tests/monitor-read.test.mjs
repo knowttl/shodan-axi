@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { withInvestigation } from './investigation-fixture.mjs'
+
+test('alert list filters expired alerts when requested', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, setMode }) => {
+    setMode('alert-expiration')
+    const clock = join(root, 'clock.mjs')
+    await writeFile(clock, 'Date.now = () => Date.parse("2026-01-01T00:00:00Z")\n')
+    const result = await run(['alert', 'list', '--expired', 'false'], { NODE_OPTIONS: `--import=${join(root, 'routing.mjs')} --import=${clock}` })
+    assert.deepEqual(result.body.items.map(item => item.id), ['current', 'permanent'])
+  })
+})
 
 test('monitor reads preserve selected resources without notifier configuration', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ run, calls }) => {

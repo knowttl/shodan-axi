@@ -26,7 +26,7 @@ const mutation = z.object({ status: z.string(), scanId: z.string().optional(), s
 const resultSchema = z.object({ operation: z.string(), limit: z.number().int(), maxBytes: z.number().int(), timeout: z.number().int(), idleTimeout: z.number().int(), count: z.number().int(), bytes: z.number().int(), upstreamConnections: z.number().int(), stopReason: z.string(), error: z.string().optional(), message: z.string().optional(), help: z.string().optional(), debugDiscarded: z.number().int(), partialRecordCount: z.number().int() })
 
 export async function collectScan(words: string[], flags: Flags, credentials: () => Promise<{ selection: Selection; key: string }>): Promise<unknown> {
-  const allowed = ['--json', '--output', '--config', '--profile', '--allow-operation', '--accept-unknown-cost', '--scan-credit-budget', '--query-credit-budget', '--max-requests', '--force', '--wait', '--limit', '--max-bytes', '--idle-timeout', '--filename', '--quiet', '--execute', '--confirm']
+  const allowed = ['--json', '--output', '--config', '--profile', '--allow-operation', '--accept-unknown-cost', '--scan-credit-budget', '--query-credit-budget', '--max-requests', '--force', '--wait', '--limit', '--max-bytes', '--idle-timeout', '--filename', '--quiet', '--verbose', '--execute', '--confirm']
   for (const flag of flags.keys()) if (!allowed.includes(flag)) invalid(`Flag ${flag} is not available for scan collection`)
   if (flags.has('--execute') !== flags.has('--confirm')) invalid('Execution requires a confirmation token')
   if (flags.has('--execute') && /^(true|1)$/i.test(process.env.SHODAN_AXI_READ_ONLY ?? '')) throw new ToolError('READ_ONLY', 'Writes are disabled', 'Use a writable environment')
@@ -34,6 +34,8 @@ export async function collectScan(words: string[], flags: Flags, credentials: ()
   const target = words[1] === 'submit'
   if (!target && words[1] !== 'internet') invalid('Invalid scan collection command')
   if (!target && flags.has('--force')) invalid('--force is available only for targeted scans')
+  if (!target && flags.has('--verbose')) invalid('--verbose is available only for targeted scans')
+  if (target && flags.has('--quiet')) invalid('--quiet is available only for Internet scans')
   const grant = get(flags, '--allow-operation')?.split(',') ?? []
   const required = target ? ['OP-009', 'OP-013', 'OP-015', 'OP-053'] : ['OP-010', 'OP-049']
   if (!required.every(item => grant.includes(item)) || !flags.has('--accept-unknown-cost')) throw new ToolError('WRITE_GRANT_REQUIRED', 'Scan collection needs each exact operation grant and unknown-cost acceptance', 'Review the collection effects and grants')
@@ -50,7 +52,7 @@ export async function collectScan(words: string[], flags: Flags, credentials: ()
   if (filename && (!isAbsolute(filename) || filename.split(/[\\/]/).includes('..'))) invalid('Result filename must be a safe absolute path')
   const { selection, key } = await credentials()
   const root = stateRoot(); const dir = join(root, 'plans'); const signingKey = await planKey(root)
-  const binding = digest(JSON.stringify({ scanDraft, wait, limit, maxBytes, idle, filename, grant, scanCredit, queryCredit, requests, selection, credential: digest(key) }))
+  const binding = digest(JSON.stringify({ scanDraft, wait, limit, maxBytes, idle, filename, quiet: flags.has('--quiet'), verbose: flags.has('--verbose'), grant, scanCredit, queryCredit, requests, selection, credential: digest(key) }))
   if (!flags.has('--execute')) {
     const unsigned = { token: randomUUID(), binding, created: Date.now() }
     await writePrivate(join(dir, `${unsigned.token}.json`), JSON.stringify({ ...unsigned, mac: createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest('hex') }))
@@ -112,5 +114,5 @@ export async function collectScan(words: string[], flags: Flags, credentials: ()
   if (filename) {
     try { saved = await save(filename, gzipSync(Buffer.from(collected.events.map(event => `${JSON.stringify(event)}\n`).join('')))) } catch { failure = 'STORAGE_ERROR' }
   }
-  return { status: failure || cleanup === 'failed' ? 'partial' : 'completed', ...(failure ? { error: failure } : {}), ...(scan?.scanId ? { scanId: scan.scanId } : {}), vendorCompletion: 'unknown', vendorCancellation: 'not-requested', ...collected, ...(streamResult ? { stream: streamResult } : {}), cleanup, ...(cleanup === 'unknown' ? { reconciliation: { alertName, help: 'Run alert list, locate this exact name and inspect its targets; preview and confirm alert remove <id> for any matching temporary alert before retrying' } } : {}), ...(cleanup === 'failed' && alertId ? { cleanupAlertId: alertId } : {}), ...(saved ? { saved } : {}), attribution: 'Matching stream records are not proof of scan ownership' }
+  return { status: failure || cleanup === 'failed' ? 'partial' : 'completed', ...(failure ? { error: failure } : {}), ...(scan?.scanId ? { scanId: scan.scanId } : {}), vendorCompletion: 'unknown', vendorCancellation: 'not-requested', ...collected, ...(flags.has('--quiet') ? { events: [] } : {}), ...(flags.has('--verbose') ? { display: collected.events.map(event => JSON.stringify(event)).join('\n') } : {}), ...(streamResult ? { stream: streamResult } : {}), cleanup, ...(cleanup === 'unknown' ? { reconciliation: { alertName, help: 'Run alert list, locate this exact name and inspect its targets; preview and confirm alert remove <id> for any matching temporary alert before retrying' } } : {}), ...(cleanup === 'failed' && alertId ? { cleanupAlertId: alertId } : {}), ...(saved ? { saved } : {}), attribution: 'Matching stream records are not proof of scan ownership' }
 }

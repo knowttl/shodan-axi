@@ -82,6 +82,17 @@ test('internal transfer confirms bounded ranges and verifies saved bytes', async
   assert.doesNotMatch(JSON.stringify({ preview, result }), /private-signature/)
 })
 
+test('selected chunk size controls ranges and request budget', async t => {
+  const { draft, execute, calls, bytes } = await fixture(t)
+  const selected = transferDraft(['data', 'download', draft.dataset, draft.name], new Map([
+    ['--filename', draft.destination], ['--max-bytes', String(bytes.length)], ['--max-requests', '4'], ['--chunksize', '524288'], ['--allow-operation', 'OP-034,OP-035,OP-071'],
+  ]))
+  const result = await execute(selected)
+  assert.equal(result.complete, true)
+  assert.deepEqual(await readFile(selected.destination), bytes)
+  assert.deepEqual(calls.slice(2).map(call => call.range), ['bytes=0-524287', 'bytes=524288-1048575', 'bytes=1048576-1048585'])
+})
+
 test('internal transfer defaults to the empty release policy', async t => {
   const { draft, selection, calls } = await fixture(t)
   await assert.rejects(transfer(draft, new Map(), selection, 'fake-secret'), { code: 'STORAGE_POLICY_UNAVAILABLE' })
