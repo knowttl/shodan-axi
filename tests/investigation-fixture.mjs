@@ -28,6 +28,12 @@ export async function withInvestigation(check) {
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (mode.startsWith('scan-collect') && request.method === 'GET' && (url.pathname === '/shodan/alert/alert-new' || url.pathname === '/shodan/ports/443')) {
+        const service = (id, ip, port, transport) => ({ _shodan: { id }, ip_str: ip, port, transport, timestamp: '2026-01-01', data: 'synthetic' })
+        const first = service('banner-a', '192.0.2.7', 443, 'tcp')
+        response.writeHead(200, { 'content-type': 'application/json' }); response.flushHeaders()
+        response.end([first, service('banner-b', '192.0.2.7', 53, 'udp'), first, service('banner-other', '192.0.2.8', 80, 'tcp')].map(value => `${JSON.stringify(value)}\n`).join('')); return
+      }
       if (mode.startsWith('stream') && (url.pathname.startsWith('/shodan/banners') || url.pathname.startsWith('/shodan/asn/') || url.pathname.startsWith('/shodan/countries/') || url.pathname.startsWith('/shodan/ports/') || url.pathname.startsWith('/shodan/vulns/') || url.pathname === '/shodan/custom' || url.pathname === '/shodan/alert' || url.pathname.startsWith('/shodan/alert/') || url.pathname.startsWith('/shodan/tags/') || url.pathname.startsWith('/threatnet/'))) {
         if (mode === 'stream-denied') { response.writeHead(403); response.end(); return }
         if (mode === 'stream-rate-limited') { response.writeHead(429); response.end(); return }
@@ -37,8 +43,8 @@ export async function withInvestigation(check) {
         if (mode === 'stream-partial') { response.end('{"ip_str":"192.0.2.'); return }
         if (mode === 'stream-malformed') { response.end('{"bad":true}\n'); return }
         const threat = url.pathname.startsWith('/threatnet/')
-        const first = threat ? { synthetic_sequence: 1, text: 'Café' } : { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: 'Café' }
-        const second = threat ? { synthetic_sequence: 2, text: 'second' } : { ip_str: '192.0.2.8', port: 443, transport: 'tcp', timestamp: '2026-01-02', data: 'second' }
+        const first = threat ? { synthetic_sequence: 1, text: 'Café', ...(mode === 'stream-secrets' ? { nested: { api_key: 'synthetic-private', note: 'AccountKey=synthetic-private', pem: '-----BEGIN CERTIFICATE-----\nsynthetic\n-----END CERTIFICATE-----', jwt: 'eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.signature', sas: 'https://example.test/?sig=synthetic' } } : {}) } : { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: mode === 'stream-secrets' ? 'AccountKey=synthetic-private' : 'Café', ...(mode === 'stream-secrets' ? { api_key: 'synthetic-private', arbitrary: 'private' } : {}), ...(mode === 'stream-radar' ? { location: { latitude: 49.28, longitude: -123.12 } } : {}) }
+        const second = threat ? { synthetic_sequence: 2, text: 'second' } : { ip_str: '192.0.2.8', port: 443, transport: 'tcp', timestamp: '2026-01-02', data: 'second', ...(mode === 'stream-radar' ? { location: { latitude: 49.29, longitude: -123.13 } } : {}) }
         const sse = mode.startsWith('stream-sse')
         response.setHeader('content-type', sse ? 'text/event-stream' : 'application/json')
         const frame = value => sse ? `data: ${JSON.stringify(value)}\n\n` : `${JSON.stringify(value)}\n`
@@ -69,7 +75,7 @@ export async function withInvestigation(check) {
         if (request.method === 'POST' && ['/shodan/scan', '/shodan/scan/internet'].includes(url.pathname)) {
           if (mode === 'lost-write') { request.socket.destroy(); return }
           if (mode === 'scan-rejected') { response.end('{"id":"scan-a","count":2,"credits_left":98,"error":"rejected"}'); return }
-          response.end(url.pathname === '/shodan/scan' ? '{"id":"scan-a","count":2,"credits_left":98}' : '{"id":"scan-internet"}'); return
+          response.end(url.pathname === '/shodan/scan' ? mode.startsWith('scan-collect') ? '{"id":"scan-a","count":1,"credits_left":98}' : '{"id":"scan-a","count":2,"credits_left":98}' : '{"id":"scan-internet"}'); return
         }
         const orgMember = /^\/org\/member\/([^/]+)$/.exec(url.pathname)
         if (orgMember) {
@@ -99,6 +105,7 @@ export async function withInvestigation(check) {
           response.end(JSON.stringify({ id: notifierMutation[1], success: true })); return
         }
         if (match && request.method === 'DELETE') {
+          if (mode === 'scan-collect-cleanup-failed') { response.writeHead(500); response.end('{}'); return }
           alerts.delete(match[1])
           if (mode === 'lost-write') { request.socket.destroy(); return }
           response.end('{"success":true}'); return
@@ -260,7 +267,37 @@ export async function withInvestigation(check) {
         resolve({ code, stdout, stderr, body })
       })
     })
-    await check({ root, calls, run, setMode: value => { mode = value } })
+    const runInteractive = args => new Promise((resolve, reject) => {
+      const quote = text => `'${text.replaceAll("'", "'\\''")}'`
+      const child = spawn('script', ['-q', '-c', [executable, ...args].map(quote).join(' '), '/dev/null'], { cwd: root, env, signal: AbortSignal.timeout(10000) })
+      let stdout = ''; let sent = false
+      child.stdout.setEncoding('utf8').on('data', chunk => {
+        stdout += chunk
+        if (!sent && stdout.includes('Press q to stop')) { sent = true; child.stdin.write('q') }
+      })
+      child.on('error', reject)
+      child.on('close', code => { resolve({ code, stdout }) })
+    })
+    const launchWorker = () => {
+      const worker = join(root, 'node_modules/@knowttl/shodan-axi/bin/shodan-stream-worker.js')
+      const child = spawn(process.execPath, [worker], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe', 'pipe'], signal: AbortSignal.timeout(10000) })
+      const channel = child.stdio[3]; let pending = ''; const values = []; const waiting = []
+      channel.setEncoding('utf8').on('data', chunk => {
+        pending += chunk
+        for (;;) {
+          const end = pending.indexOf('\n'); if (end < 0) break
+          const value = JSON.parse(pending.slice(0, end)); pending = pending.slice(end + 1)
+          const resolve = waiting.shift(); if (resolve) resolve(value); else values.push(value)
+        }
+      })
+      return {
+        send: value => { channel.write(`${JSON.stringify(value)}\n`) },
+        next: () => values.length ? Promise.resolve(values.shift()) : new Promise(resolve => waiting.push(resolve)),
+        closed: new Promise((resolve, reject) => { child.on('error', reject); child.on('close', resolve) }),
+        close: () => { channel.end() },
+      }
+    }
+    await check({ root, calls, run, runInteractive, launchWorker, setMode: value => { mode = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })

@@ -54,6 +54,8 @@ Timeouts use milliseconds; the idle timer starts at dispatch and resets on each 
 Every stream execution ends with one summary carrying the approved `limit`, `maxBytes`, `timeout` and `idleTimeout`, accepted event `count`, consumed `bytes`, stop reason, discarded debug count and incomplete record count.
 Execution failures attach their error to that summary and exit nonzero; connections are never automatically retried.
 Native `--follow` requires `--json` or `--output json`, an absolute `--datadir`, `--max-file-bytes` and `--retain`; it emits one JSON object containing `event` per accepted record, followed by the summary.
+Native `radar` uses the same stream selectors and bounds, renders a map in an interactive terminal and stops on `q`.
+For non-interactive use, the result includes a bounded map snapshot; `--filename` saves that snapshot to a private absolute path.
 Follow mode retains the same read bounds; gzip JSONL files rotate by UTC day or compressed file size, and `--retain` bounds the number of retained stream files.
 `--compresslevel` accepts 0 through 9, defaults to 6 and applies across rotations.
 Stream connections are refused when `SHODAN_AXI_READ_ONLY=true`.
@@ -76,7 +78,13 @@ Targets are comma-separated IPv4 or IPv6 addresses or CIDR networks; `--force` r
 Overlapping targets count separately for the credit estimate.
 `scan internet <port> <protocol>` requires OP-010, a scan-credit budget, a request bound and acceptance of unknown cost; the budget cannot bound a provider cost that is unknown.
 Both commands preview their active effects and require exact confirmation before one submission; a returned scan ID does not mean that the job has finished.
-Stream collection, vendor cancellation and saved scan results are not provided by these commands.
+For bounded collection, add a positive `--wait` in seconds, `--limit`, `--max-bytes` and `--idle-timeout` in milliseconds.
+Targeted collection also requires OP-013, OP-015 and OP-053, an unknown-cost acceptance, a query-credit budget of at least 8 and at least 10 requests; its preview includes a temporary alert and its cleanup.
+Internet collection requires OP-049 and at least two requests; `--quiet` does not suppress submission.
+The optional absolute `--filename` saves matching results as gzip JSONL.
+Results are deduplicated by address, port and transport and filtered to the requested targets or port.
+The stream reports matching observations, not proof that the scan produced them, and stopping collection does not cancel the vendor scan.
+Cleanup failure reports the temporary alert identifier and preserves the scan ID and collected results.
 An organization membership add notifies the member unless `--silent` is supplied; a removal preview reports the downgrade effect.
 Writes require an exact operation grant and request and credit bounds; unknown-cost writes also require `--accept-unknown-cost`.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
@@ -100,7 +108,7 @@ Streams use the selected profile's `streamOrigin`, defaulting to `https://stream
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B5.1 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B5.2 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.
