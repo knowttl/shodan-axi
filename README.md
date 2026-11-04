@@ -18,7 +18,7 @@ The API key is supplied through the referenced environment variable or a private
 `doctor` makes one account information request and does not establish access to other API families.
 Queries that may consume credits require an exact operation grant and a credit budget.
 Unknown-cost investigation reads also require `--accept-unknown-cost` and an explicit request cap; stream bounds are described below.
-Hosted use admits free reads and refuses all writes before retrieving credentials; chargeable or unknown-cost reads and saved files are available through the native CLI.
+Ordinary hosted command dispatch admits free reads and refuses all writes before retrieving credentials; chargeable or unknown-cost reads and saved files are available through the native CLI.
 `internetdb host` uses no API key; `myip --ipv6` requires an IPv6 transport and never falls back to IPv4.
 Honeyscore and services remain source-only and unverified.
 Trends and Exploits access and redirect behavior remain unverified against live services; `trends <query>`, `exploits search` and `exploits count` are unknown-cost reads.
@@ -59,7 +59,7 @@ For non-interactive use, the result includes a bounded map snapshot; `--filename
 Follow mode retains the same read bounds; gzip JSONL files rotate by UTC day or compressed file size, and `--retain` bounds the number of retained stream files.
 `--compresslevel` accepts 0 through 9, defaults to 6 and applies across rotations.
 Stream connections are refused when `SHODAN_AXI_READ_ONLY=true`.
-Hosted execution refuses every stream operation before retrieving credentials.
+Ordinary hosted command dispatch refuses stream operations before retrieving credentials; supervised sessions use the Artium companion protocol described below.
 Threatnet event schemas and tag-filtered stream availability remain unverified against the live service.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
 The native `geonet ping`, `geonet geoping`, `geonet dns` and `geonet geodns` commands perform active probes without an API key.
@@ -79,12 +79,14 @@ Overlapping targets count separately for the credit estimate.
 `scan internet <port> <protocol>` requires OP-010, a scan-credit budget, a request bound and acceptance of unknown cost; the budget cannot bound a provider cost that is unknown.
 Both commands preview their active effects and require exact confirmation before one submission; a returned scan ID does not mean that the job has finished.
 For bounded collection, add a positive `--wait` in seconds, `--limit`, `--max-bytes` and `--idle-timeout` in milliseconds.
+Omitting `--wait` or supplying a nonpositive integer submits immediately without collection.
 Targeted collection also requires OP-013, OP-015 and OP-053, an unknown-cost acceptance, a query-credit budget of at least 8 and at least 10 requests; its preview includes a temporary alert and its cleanup.
 Internet collection requires OP-049 and at least two requests; `--quiet` does not suppress submission.
 The optional absolute `--filename` saves matching results as gzip JSONL.
 Results are deduplicated by address, port and transport and filtered to the requested targets or port.
 The stream reports matching observations, not proof that the scan produced them, and stopping collection does not cancel the vendor scan.
 Cleanup failure reports the temporary alert identifier and preserves the scan ID and collected results.
+If temporary alert creation loses its response, scan collection reports `cleanup: unknown` and a generated `reconciliation.alertName`; use `alert list` to find and inspect that exact name, then preview and confirm removal by ID before retrying.
 An organization membership add notifies the member unless `--silent` is supplied; a removal preview reports the downgrade effect.
 Writes require an exact operation grant and request and credit bounds; unknown-cost writes also require `--accept-unknown-cost`.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
@@ -94,7 +96,7 @@ Write plans bind the selected profile, credential, input, effects and observed s
 Confirmation tokens expire after 15 minutes and are consumed before dispatch.
 Plans and the default `writes.log` journal live under `shodan-axi` in the absolute `XDG_STATE_HOME` directory, falling back to `~/.local/state`; Windows uses absolute `LOCALAPPDATA`, falling back to `~/AppData/Local`.
 `SHODAN_AXI_WRITE_LOG` selects a private absolute journal path instead.
-Scan execution returns `submitted` with a scan ID and unknown completion, or `OUTCOME_UNKNOWN` when the submission cannot be confirmed.
+Without collection, scan execution returns `submitted` with a scan ID and unknown completion, or `OUTCOME_UNKNOWN` when the submission cannot be confirmed.
 Other write execution lists every step as `verified`, `acknowledged-unverified`, `failed`, or `not-attempted`.
 For those writes, definitively acknowledged mutations without a readback contract are journaled as `acknowledged-unverified` and allow ordered execution to continue; failed or ambiguous writes and failed or contradictory readbacks stop subsequent steps.
 Notifier creation and updates use a private absolute `--body-file` containing JSON with an `args` object; creation also requires a provider.
@@ -113,11 +115,11 @@ The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to
 The Artium companion owns session admission, authorization and revision rechecks, quotas, replay accounting, revocation and private-directory cleanup; this package owns the worker protocol.
 The companion must launch the worker with a private inherited duplex fd 3 and send the first JSONL frame as `{ "version": 1, "type": "admit", "requestId": "<unique>", "admission": "<session-random-binding>", "profilePath": "<private-absolute-path>" }`.
 The binding must contain 32 to 128 characters and appear as `admission` on every `start` and `extend` frame after the host has authorized that operation; duplicate admission, missing admission and mismatched bindings terminate the worker.
+Protocol failures during streaming cancel active work and attach the error to the final `closed` frame while preserving stream progress counters.
 The profile must be private, contain exactly the default profile `artium`, and use an API key SecretRef named `ARTIUM_SECRET_<n>`; the worker reads only this profile and never selects ambient credentials or origin overrides.
 The host must provide only its selected secret and trusted runtime settings, isolate the inherited channel from callers, and create the confirmation plan using that same private profile and selected secret before sending `start`.
 The channel is a trusted host-to-child boundary, not a public authorization endpoint or proof of host identity against another process with the same OS privileges.
 Existing Artium launchers must add this handshake and admission fields before using this worker; the pinned real-host conformance check must pass with that companion change before delivery.
-If temporary alert creation loses its response, scan collection reports `cleanup: unknown` and a generated `reconciliation.alertName`; use `alert list` to find and inspect that exact name, then preview and confirm removal by ID before retrying.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.
 Native Windows platform verification remains pending until run on Windows.
