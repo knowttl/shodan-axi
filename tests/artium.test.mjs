@@ -1,59 +1,24 @@
 import assert from 'node:assert/strict'
-import { execFileSync, spawn } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { spawn } from 'node:child_process'
 import { createServer } from 'node:https'
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
 import { createTestTls } from './tls-fixture.mjs'
+import { verifyArtiumPackage } from './artium-package-fixture.mjs'
 
-const hash = value => createHash('sha256').update(value).digest('hex')
 const moduleAt = (root, path) => import(pathToFileURL(join(root, path)).href)
-
-async function files(directory, prefix = '') {
-  const result = []
-  for (const entry of await readdir(join(directory, prefix), { withFileTypes: true })) {
-    const name = join(prefix, entry.name)
-    if (entry.isDirectory()) result.push(...await files(directory, name))
-    else if (entry.isFile()) result.push(name)
-    else throw new Error('Package contains a non-file entry')
-  }
-  return result.sort()
-}
 
 test('local Artium uses the packed account tool and refuses unapproved calls', { timeout: 90000 }, async () => {
   const fixtureRoot = process.env.ARTIUM_FIXTURE_ROOT
   const manifestPath = process.env.ARTIUM_FIXTURE_MANIFEST
-  assert.ok(fixtureRoot && isAbsolute(fixtureRoot) && manifestPath && isAbsolute(manifestPath), 'Set absolute Artium fixture root and manifest paths')
-  const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-  for (const key of ['tarball', 'installedPackage', 'serverModule', 'clientExecutable', 'toolExecutable']) {
-    assert.ok(isAbsolute(manifest[key]), `Manifest requires an absolute ${key}`)
-  }
-  assert.equal(hash(await readFile(manifest.tarball)), manifest.sha256)
-  assert.equal(execFileSync('git', ['-C', fixtureRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), manifest.artiumRevision)
-  assert.equal(execFileSync('git', ['-C', fixtureRoot, 'status', '--porcelain'], { encoding: 'utf8' }).trim(), '', 'Artium fixture source must match its committed revision')
-  assert.equal(await realpath(manifest.installedPackage), resolve(manifest.installedPackage), 'Host package must not be a symlink')
   const temporary = await mkdtemp(join(tmpdir(), 'shodan-artium-'))
   const previousNodeEnv = process.env.NODE_ENV
   let app, db, fake, healthSchedule, previousHealthTick
   try {
-    const packed = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', temporary, '--json'], { encoding: 'utf8' }))
-    assert.equal(hash(await readFile(join(temporary, packed[0].filename))), manifest.sha256, 'Current tarball differs from the host package')
-    const extracted = join(temporary, 'extract')
-    await mkdir(extracted)
-    execFileSync('tar', ['-xzf', manifest.tarball, '-C', extracted])
-    const packageRoot = join(extracted, 'package')
-    const packageFiles = await files(packageRoot)
-    assert.deepEqual(await files(manifest.installedPackage), packageFiles)
-    for (const file of packageFiles) assert.deepEqual(await readFile(join(packageRoot, file)), await readFile(join(manifest.installedPackage, file)), file)
-    assert.equal(await realpath(manifest.toolExecutable), await realpath(join(manifest.installedPackage, 'bin/shodan-axi.js')))
-    assert.equal(await realpath(manifest.serverModule), await realpath(join(fixtureRoot, 'dist/src/server/app.js')))
-    assert.equal(await realpath(manifest.clientExecutable), await realpath(join(fixtureRoot, 'dist/cli/artium-axi.mjs')))
-    const inventory = JSON.parse(await readFile(join(fixtureRoot, 'tools/inventories/shodan-axi.json'), 'utf8'))
-    assert.deepEqual(JSON.parse(await readFile(join(fixtureRoot, 'dist/tools/inventories/shodan-axi.json'), 'utf8')), inventory)
-    for (const item of inventory.sources) assert.equal(hash(await readFile(join(manifest.installedPackage, item.path))), item.sha256, item.path)
+    const manifest = await verifyArtiumPackage(fixtureRoot, manifestPath, temporary)
 
     const { keyFile, certFile: caFile } = await createTestTls(temporary, 'DNS:localhost')
     const requests = []
@@ -171,10 +136,11 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     const home = await run([])
     assert.equal(JSON.parse(home.stdout).account.query_credits, 20)
     assert.equal(requests.length, 4)
+    const packageVersion = JSON.parse(await readFile(join(manifest.installedPackage, 'package.json'), 'utf8')).version
     for (const alias of ['version', '--version', '-v', '-V']) {
       const version = await run([alias], false)
       assert.equal(version.code, 0, version.stdout + version.stderr)
-      assert.equal(version.stdout, `${packed[0].version}\n`)
+      assert.equal(version.stdout, `${packageVersion}\n`)
     }
     assert.equal(requests.length, 4)
     if (process.env.SHODAN_TEST_SLICE !== 'B1.1') {
@@ -227,7 +193,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeHistoryCredentials)
         }
       }
-      if (['B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['alert', 'info', 'alert-a'])).id, 'alert-a')
         assert.equal((await read(['alert', 'list'])).items[0].id, 'alert-a')
         assert.equal((await read(['alert', 'triggers'])).items[0].rule, '*')
@@ -253,7 +219,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           }
         }
       }
-      if (['B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const info = await read(['org', 'info'])
         assert.equal(info.members[0].email, 'existing@example.test')
         assert.equal(Object.hasOwn(info, 'api_key'), false)
@@ -269,7 +235,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
-      if (['B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['scan', 'protocols'])).https, 'Synthetic HTTPS module')
         const list = await read(['scan', 'list'])
         assert.equal(list.items[0].id, 'scan-a')
@@ -287,7 +253,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
-      if (['B3.4', 'B4.1', 'B4.2', 'B5.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const before = requests.length; const beforeCredentials = credentialReads
         for (const [command, target, operation] of [
           ['ping', '192.0.2.7', 'OP-060'], ['geoping', '192.0.2.7', 'OP-061'],
@@ -300,7 +266,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           }
         }
       }
-      if (['B4.1', 'B4.2', 'B5.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const stats = await read(['alert', 'stats'])
         assert.equal(stats.complete, false)
         assert.equal(stats.aggregation, 'partial')
@@ -315,7 +281,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
-      if (['B4.2', 'B5.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B4.2', 'B5.1', 'B5.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const datasets = await read(['data', 'list'])
         assert.deepEqual(datasets.items, [{ name: 'raw-daily', description: 'Synthetic daily banners', scope: 'daily' }])
         const files = await read(['data', 'list', '--dataset', 'raw-daily'])
@@ -328,7 +294,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials)
         }
       }
-      if (process.env.SHODAN_TEST_SLICE === 'B5.1' || !process.env.SHODAN_TEST_SLICE) {
+      if (['B5.1', 'B5.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const before = requests.length; const beforeCredentials = credentialReads
         const selectors = [[['stream'], 'OP-046'], [['stream', '--asn', '64500'], 'OP-047'], [['stream', '--countries', 'CA'], 'OP-048'], [['stream', '--ports', '443'], 'OP-049'], [['stream', '--vulns', 'CVE-2020-0001'], 'OP-050'], [['stream', '--custom-filters', 'port:443'], 'OP-051'], [['stream', '--alert', 'all'], 'OP-052'], [['stream', '--alert', 'alert-a'], 'OP-053'], [['stream', '--tags', 'cloud'], 'OP-065'], [['threatnet', 'events'], 'OP-067'], [['threatnet', 'backscatter'], 'OP-068'], [['threatnet', 'ssh'], 'OP-069']]
         for (const [args, operation] of selectors) {

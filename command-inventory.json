@@ -1,6 +1,36 @@
 {
   "commands": [
     {
+      "command": "radar",
+      "operation": "CLI-015",
+      "effect": "stream",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--accept-unknown-cost",
+        "--limit",
+        "--max-bytes",
+        "--timeout",
+        "--idle-timeout",
+        "--execute",
+        "--confirm",
+        "--filename",
+        "--asn",
+        "--countries",
+        "--ports",
+        "--vulns",
+        "--custom-filters",
+        "--alert",
+        "--tags"
+      ],
+      "arguments": []
+    },
+    {
       "command": "stream",
       "operation": "OP-046",
       "effect": "stream",
@@ -4624,6 +4654,12 @@
         "--profile",
         "--allow-operation",
         "--scan-credit-budget",
+        "--query-credit-budget",
+        "--wait",
+        "--limit",
+        "--max-bytes",
+        "--idle-timeout",
+        "--filename",
         "--max-requests",
         "--accept-unknown-cost",
         "--execute",
@@ -4649,10 +4685,17 @@
         "--profile",
         "--allow-operation",
         "--scan-credit-budget",
+        "--query-credit-budget",
+        "--wait",
+        "--limit",
+        "--max-bytes",
+        "--idle-timeout",
+        "--filename",
         "--max-requests",
         "--accept-unknown-cost",
         "--execute",
-        "--confirm"
+        "--confirm",
+        "--quiet"
       ],
       "arguments": [
         {

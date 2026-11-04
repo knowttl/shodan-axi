@@ -16,8 +16,9 @@ import { readPrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { read } from './vendor.js'
 import { stream, streamDraft } from './stream.js'
+import { collectScan } from './scan-collect.js'
 
-const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, download, data list, data download, stream, threatnet events, threatnet backscatter, threatnet ssh, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, alert export, alert stats, alert download, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns, parse, convert'
+const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, download, data list, data download, stream, radar, threatnet events, threatnet backscatter, threatnet ssh, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, alert export, alert stats, alert download, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns, parse, convert'
 const help: Record<string, string> = {
   '': usage,
   info: 'info [--profile <name>] [--config <absolute-path>] [--json] - inspect plan and credits',
@@ -37,8 +38,8 @@ export async function main(args: string[]): Promise<void> {
     const flags = new Map<string, string | boolean>()
     const words: string[] = []
     const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename', '-f': '--filters' }
-    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force', '--resume', '--restart', '--follow']
-    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--dataset', '--alert-id', '--asn', '--countries', '--ports', '--custom-filters', '--alert', '--tags', '--idle-timeout', '--datadir', '--max-file-bytes', '--retain', '--compresslevel']
+    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force', '--resume', '--restart', '--follow', '--quiet']
+    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--dataset', '--alert-id', '--asn', '--countries', '--ports', '--custom-filters', '--alert', '--tags', '--idle-timeout', '--datadir', '--max-file-bytes', '--retain', '--compresslevel', '--wait']
     for (let index = 0; index < args.length; index++) {
       const input = args[index]
       if (!input) continue
@@ -66,8 +67,8 @@ export async function main(args: string[]): Promise<void> {
     if (readOnly && !/^(?:true|false|1|0)$/i.test(readOnly)) throw new ToolError('CONFIG_INVALID', 'Invalid read-only setting', 'Set SHODAN_AXI_READ_ONLY to true or false')
     const option = (flag: string): string | undefined => { const value = flags.get(flag); return typeof value === 'string' ? value : undefined }
     const command = words.join(' ')
-    if (words[0] === 'stream' || words[0] === 'threatnet') {
-      if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), help: 'Select one stream, supply its --allow-operation, --accept-unknown-cost, --limit, --max-bytes, --timeout and --idle-timeout, then repeat the preview with --execute --confirm <token>. Follow also requires --json, --datadir, --max-file-bytes and --retain.' }, json); return }
+    if (words[0] === 'stream' || words[0] === 'threatnet' || words[0] === 'radar') {
+      if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), help: words[0] === 'radar' ? 'Select a bounded stream, preview and confirm as for stream; press q to stop in a terminal or pass --filename to save the map.' : 'Select one stream, supply its --allow-operation, --accept-unknown-cost, --limit, --max-bytes, --timeout and --idle-timeout, then repeat the preview with --execute --confirm <token>. Follow also requires --json, --datadir, --max-file-bytes and --retain.' }, json); return }
       const draft = streamDraft(words, flags)
       const selected = await select(configPath(option('--config')), option('--profile'))
       key = await secret(selected)
@@ -127,6 +128,19 @@ export async function main(args: string[]): Promise<void> {
       return
     }
     if (isMutation(words)) {
+      if (words[0] === 'scan' && flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), effect: 'write', help: 'Preview and confirm each scan with exact grants and budgets. Positive --wait adds bounded stream collection; use --filename to save gzip JSONL. Targeted collection also creates and cleans up a temporary alert.' }, json); return }
+      const immediate = words[0] === 'scan' && /^-?\d+$/.test(option('--wait') ?? '') && Number(option('--wait')) <= 0
+      if (words[0] === 'scan' && flags.has('--wait') && !immediate) {
+        const result = await collectScan(words, flags, async () => {
+          const selection = await select(configPath(option('--config')), option('--profile'))
+          key = await secret(selection)
+          return { selection, key }
+        })
+        if (typeof result === 'object' && result !== null && 'status' in result && result.status === 'partial') process.exitCode = 1
+        output(clean(result, key), json); return
+      }
+      if (words[0] === 'scan' && words[1] === 'internet') flags.delete('--quiet')
+      if (immediate) flags.delete('--wait')
       validateMutationFlags(flags)
       if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), effect: 'write', cost: words[0] === 'scan' && words[1] === 'submit' ? 'scan' : 'unknown', help: words[0] === 'scan' ? 'Preview with --allow-operation, --scan-credit-budget and --max-requests; Internet scans also require --accept-unknown-cost. Repeat with --execute --confirm <token>.' : 'Preview with exact --allow-operation, --accept-unknown-cost, --query-credit-budget and --max-requests; repeat the request with --execute --confirm <token>.' }, json); return }
       const draft = ['clear', 'domain'].includes(words[1] ?? '') ? undefined : words[1] === 'import' ? await draftImport(words, flags) : await draftMutation(words, flags)

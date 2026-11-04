@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { createServer } from 'node:https'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -28,6 +29,12 @@ export async function withInvestigation(check) {
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (mode.startsWith('scan-collect') && request.method === 'GET' && (url.pathname === '/shodan/alert/alert-new' || url.pathname === '/shodan/ports/443')) {
+        const service = (id, ip, port, transport) => ({ _shodan: { id }, ip_str: ip, port, transport, timestamp: '2026-01-01', data: 'synthetic' })
+        const first = service('banner-a', '192.0.2.7', 443, 'tcp')
+        response.writeHead(200, { 'content-type': 'application/json' }); response.flushHeaders()
+        response.end([first, service('banner-b', '192.0.2.7', 53, 'udp'), first, service('banner-other', '192.0.2.8', 80, 'tcp')].map(value => `${JSON.stringify(value)}\n`).join('')); return
+      }
       if (mode.startsWith('stream') && (url.pathname.startsWith('/shodan/banners') || url.pathname.startsWith('/shodan/asn/') || url.pathname.startsWith('/shodan/countries/') || url.pathname.startsWith('/shodan/ports/') || url.pathname.startsWith('/shodan/vulns/') || url.pathname === '/shodan/custom' || url.pathname === '/shodan/alert' || url.pathname.startsWith('/shodan/alert/') || url.pathname.startsWith('/shodan/tags/') || url.pathname.startsWith('/threatnet/'))) {
         if (mode === 'stream-denied') { response.writeHead(403); response.end(); return }
         if (mode === 'stream-rate-limited') { response.writeHead(429); response.end(); return }
@@ -37,8 +44,8 @@ export async function withInvestigation(check) {
         if (mode === 'stream-partial') { response.end('{"ip_str":"192.0.2.'); return }
         if (mode === 'stream-malformed') { response.end('{"bad":true}\n'); return }
         const threat = url.pathname.startsWith('/threatnet/')
-        const first = threat ? { synthetic_sequence: 1, text: 'Café' } : { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: 'Café' }
-        const second = threat ? { synthetic_sequence: 2, text: 'second' } : { ip_str: '192.0.2.8', port: 443, transport: 'tcp', timestamp: '2026-01-02', data: 'second' }
+        const first = threat ? { synthetic_sequence: 1, text: 'Café', ...(mode === 'stream-secrets' ? { nested: { api_key: 'synthetic-private', note: 'AccountKey=synthetic-private', pem: '-----BEGIN CERTIFICATE-----\nsynthetic\n-----END CERTIFICATE-----', jwt: 'eyJhbGciOiJub25lIn0.eyJzdWIiOiIxIn0.signature', sas: 'https://example.test/?sig=synthetic' } } : {}) } : { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: mode === 'stream-secrets' ? 'AccountKey=synthetic-private' : 'Café', ...(mode === 'stream-secrets' ? { api_key: 'synthetic-private', arbitrary: 'private' } : {}), ...(mode === 'stream-radar' ? { location: { latitude: 49.28, longitude: -123.12 } } : {}) }
+        const second = threat ? { synthetic_sequence: 2, text: 'second' } : { ip_str: '192.0.2.8', port: 443, transport: 'tcp', timestamp: '2026-01-02', data: 'second', ...(mode === 'stream-radar' ? { location: { latitude: 49.29, longitude: -123.13 } } : {}) }
         const sse = mode.startsWith('stream-sse')
         response.setHeader('content-type', sse ? 'text/event-stream' : 'application/json')
         const frame = value => sse ? `data: ${JSON.stringify(value)}\n\n` : `${JSON.stringify(value)}\n`
@@ -48,6 +55,7 @@ export async function withInvestigation(check) {
           response.end(Buffer.concat([Buffer.from(`${frame(first)}${frame({ event: 'debug', discarded: 3 })}`), Buffer.isBuffer(suffix) ? suffix : Buffer.from(sse ? `data: ${suffix}\n` : suffix)])); return
         }
         if (mode === 'stream-wait') { response.write(frame(first)); return }
+        if (mode === 'stream-wait-accounting') { response.write(`${frame(first)}${frame({ event: 'debug', discarded: 3 })}{"ip_str":`); return }
         const payload = Buffer.from(`\n${frame(first)}${frame({ event: 'debug', discarded: 3 })}${frame(second)}`)
         const split = payload.indexOf(Buffer.from('é')) + 1
         response.write(payload.subarray(0, split))
@@ -69,7 +77,7 @@ export async function withInvestigation(check) {
         if (request.method === 'POST' && ['/shodan/scan', '/shodan/scan/internet'].includes(url.pathname)) {
           if (mode === 'lost-write') { request.socket.destroy(); return }
           if (mode === 'scan-rejected') { response.end('{"id":"scan-a","count":2,"credits_left":98,"error":"rejected"}'); return }
-          response.end(url.pathname === '/shodan/scan' ? '{"id":"scan-a","count":2,"credits_left":98}' : '{"id":"scan-internet"}'); return
+          response.end(url.pathname === '/shodan/scan' ? mode.startsWith('scan-collect') ? '{"id":"scan-a","count":1,"credits_left":98}' : '{"id":"scan-a","count":2,"credits_left":98}' : '{"id":"scan-internet"}'); return
         }
         const orgMember = /^\/org\/member\/([^/]+)$/.exec(url.pathname)
         if (orgMember) {
@@ -99,6 +107,7 @@ export async function withInvestigation(check) {
           response.end(JSON.stringify({ id: notifierMutation[1], success: true })); return
         }
         if (match && request.method === 'DELETE') {
+          if (mode === 'scan-collect-cleanup-failed') { response.writeHead(500); response.end('{}'); return }
           alerts.delete(match[1])
           if (mode === 'lost-write') { request.socket.destroy(); return }
           response.end('{"success":true}'); return
@@ -246,6 +255,10 @@ export async function withInvestigation(check) {
     await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io', 'https://geonet.shodan.io', 'https://stream.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); outgoing.on('error', error => process.stderr.write('Fake transport error: ' + (error.code ?? error.message) + '\\n')); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
     const config = join(root, 'config.json')
     await writeFile(config, JSON.stringify({ version: 1, defaultProfile: 'selected', profiles: { selected: { auth: 'api-key', origin, apiKey: { env: 'TEST_SHODAN_KEY' } } } }), { mode: 0o600 })
+    const hostProfile = join(root, 'host-profile.json')
+    await writeFile(hostProfile, JSON.stringify({ version: 1, defaultProfile: 'artium', profiles: { artium: { auth: 'api-key', origin, apiKey: { env: 'ARTIUM_SECRET_0' } } } }), { mode: 0o600 })
+    const tracePreload = join(root, 'trace-credentials.mjs')
+    await writeFile(tracePreload, `import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module'; const open = fs.promises.open; fs.promises.open = async function (path, ...args) { if ([${JSON.stringify(config)}, ${JSON.stringify(hostProfile)}].includes(path)) fs.appendFileSync(process.env.TEST_CREDENTIAL_READS, JSON.stringify(path) + '\\n'); return open.call(this, path, ...args) }; syncBuiltinESMExports();\n`)
     const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload} --import=${timerPreload}`, NODE_EXTRA_CA_CERTS: certFile }
     const run = (args, overrides = {}, onChild = () => {}) => new Promise((resolve, reject) => {
       const child = spawn(executable, [...args, '--json'], { cwd: root, env: { ...env, ...overrides }, signal: AbortSignal.timeout(10000) })
@@ -260,7 +273,44 @@ export async function withInvestigation(check) {
         resolve({ code, stdout, stderr, body })
       })
     })
-    await check({ root, calls, run, setMode: value => { mode = value } })
+    const runInteractive = (args, input = 'q') => new Promise((resolve, reject) => {
+      const quote = text => `'${text.replaceAll("'", "'\\''")}'`
+      const child = spawn('script', ['-q', '-c', `stty rows 24 cols 80 && exec ${[executable, ...args].map(quote).join(' ')}`, '/dev/null'], { cwd: root, env, signal: AbortSignal.timeout(10000) })
+      let stdout = ''; let sent = false
+      child.stdout.setEncoding('utf8').on('data', chunk => {
+        stdout += chunk
+        if (!sent && stdout.includes('Press q to stop')) { sent = true; child.stdin.write(input) }
+      })
+      child.on('error', reject)
+      child.on('close', code => { resolve({ code, stdout }) })
+    })
+    const admissionBinding = 'synthetic-host-admission-binding-01'
+    const runHosted = args => run([...args, '--config', hostProfile, '--profile', 'artium'], { ARTIUM_SECRET_0: 'fake-secret' })
+    const launchWorker = ({ admitted = true, profilePath = hostProfile, overrides = {} } = {}) => {
+      const worker = join(root, 'node_modules/@knowttl/shodan-axi/bin/shodan-stream-worker.js')
+      const readsPath = join(root, `credential-reads-${randomUUID()}.jsonl`)
+      const workerEnv = { PATH: env.PATH, HOME: root, NODE_OPTIONS: `${env.NODE_OPTIONS} --import=${tracePreload}`, NODE_EXTRA_CA_CERTS: certFile, ARTIUM_SECRET_0: 'fake-secret', TEST_CREDENTIAL_READS: readsPath, ...overrides }
+      const child = spawn(process.execPath, [worker], { cwd: root, env: workerEnv, stdio: ['ignore', 'pipe', 'pipe', 'pipe'], signal: AbortSignal.timeout(10000) })
+      const channel = child.stdio[3]; let pending = ''; const values = []; const waiting = []
+      channel.setEncoding('utf8').on('data', chunk => {
+        pending += chunk
+        for (;;) {
+          const end = pending.indexOf('\n'); if (end < 0) break
+          const value = JSON.parse(pending.slice(0, end)); pending = pending.slice(end + 1)
+          const resolve = waiting.shift(); if (resolve) resolve(value); else values.push(value)
+        }
+      })
+      if (admitted) channel.write(`${JSON.stringify({ version: 1, type: 'admit', requestId: 'admit-1', admission: admissionBinding, profilePath })}\n`)
+      return {
+        readsPath,
+        send: value => { channel.write(`${JSON.stringify(value)}\n`) },
+        sendRaw: value => { channel.write(value) },
+        next: () => values.length ? Promise.resolve(values.shift()) : new Promise(resolve => waiting.push(resolve)),
+        closed: new Promise((resolve, reject) => { child.on('error', reject); child.on('close', resolve) }),
+        close: () => { channel.end() },
+      }
+    }
+    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, setMode: value => { mode = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })
