@@ -9,7 +9,7 @@ import { readPrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { read } from './vendor.js'
 
-const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove'
+const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet'
 const help: Record<string, string> = {
   '': usage,
   info: 'info [--profile <name>] [--config <absolute-path>] [--json] - inspect plan and credits',
@@ -29,8 +29,8 @@ export async function main(args: string[]): Promise<void> {
     const flags = new Map<string, string | boolean>()
     const words: string[] = []
     const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename' }
-    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent']
-    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--allow-operation', '--fields', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers']
+    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force']
+    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers']
     for (let index = 0; index < args.length; index++) {
       const input = args[index]
       if (!input) continue
@@ -56,7 +56,7 @@ export async function main(args: string[]): Promise<void> {
     const command = words.join(' ')
     if (isMutation(words)) {
       validateMutationFlags(flags)
-      if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), effect: 'write', cost: 'unknown', help: 'Preview with exact --allow-operation, --accept-unknown-cost, --query-credit-budget and --max-requests; repeat the request with --execute --confirm <token>.' }, json); return }
+      if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), effect: 'write', cost: words[0] === 'scan' && words[1] === 'submit' ? 'scan' : 'unknown', help: words[0] === 'scan' ? 'Preview with --allow-operation, --scan-credit-budget and --max-requests; Internet scans also require --accept-unknown-cost. Repeat with --execute --confirm <token>.' : 'Preview with exact --allow-operation, --accept-unknown-cost, --query-credit-budget and --max-requests; repeat the request with --execute --confirm <token>.' }, json); return }
       const draft = ['clear', 'domain'].includes(words[1] ?? '') ? undefined : words[1] === 'import' ? await draftImport(words, flags) : await draftMutation(words, flags)
       const chosen = await select(configPath(option('--config')), option('--profile'))
       key = await secret(chosen)

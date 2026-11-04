@@ -26,6 +26,14 @@ For native Trends exports, choose `--save` for a query-derived filename or `--fi
 Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
 Alert and notifier reads and writes are available through the native CLI.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
+Use `scan protocols`, `scan list` and `scan status <id>` to inspect scan capabilities and jobs.
+The status command can poll with `--poll-attempts`, `--poll-interval-ms` and an explicit `--max-requests` bound.
+Scan list pagination is undocumented, so the response indicates whether the returned scope is complete without inventing a page parameter.
+Native `scan submit <targets>` requires OP-009, a scan-credit budget sufficient for the conservative expanded target count and a request bound.
+Overlapping targets count separately for the credit estimate.
+`scan internet <port> <protocol>` requires OP-010, a scan-credit budget, a request bound and acceptance of unknown cost; the budget cannot bound a provider cost that is unknown.
+Both commands preview their active effects and require exact confirmation before one submission; a returned scan ID does not mean that the job has finished.
+Stream collection, vendor cancellation and saved scan results are not provided by these commands.
 `org info` omits provider-issued credentials and other private fields from its output.
 An add notifies the member unless `--silent` is supplied; a removal preview reports the downgrade effect.
 Writes require an exact operation grant, unknown-cost acceptance and request and credit bounds.
@@ -46,7 +54,7 @@ See [the generated command inventory](command-inventory.json) for command argume
 Native commands contact the configured Shodan origin; offline verification uses controlled fakes, and live mutations require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.2 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.3 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.

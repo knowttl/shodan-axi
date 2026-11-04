@@ -54,6 +54,9 @@ export function planInvestigation(words: string[], flags: Flags): Investigation 
   const queryBudget = numberOption(flags, '--query-credit-budget', 0, 1000)
   const maxBytes = numberOption(flags, '--max-bytes', 1024 * 1024, 10 * 1024 * 1024)
   const timeout = numberOption(flags, '--timeout', 30000, 300000)
+  const attempts = numberOption(flags, '--poll-attempts', 1, 100)
+  numberOption(flags, '--poll-interval-ms', 1000, 30000)
+  if (operation.id === 'OP-012' && (!attempts || attempts > maxRequests)) fail('Poll attempts must fit the request limit')
   if (!maxRequests || !maxPages || !maxBytes || !timeout) fail('Limits must be greater than zero')
   if (!flags.has('--help') && operation.cost !== 'none' && value(flags, '--allow-operation') !== operation.id) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'An exact operation grant is required', `Pass --allow-operation ${operation.id} with an explicit budget`)
   if (!flags.has('--help') && operation.cost !== 'none' && queryBudget < 1) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Query-credit budget is required', 'Pass --query-credit-budget with an allowed credit count')
@@ -191,6 +194,31 @@ export async function investigate(plan: Investigation, origin: string | undefine
     }
   }
   const raw = await dispatch(path, query, operation.cost !== 'none')
+  if (operation.id === 'OP-008') return parse(z.record(z.string(), z.string()), raw)
+  if (operation.id === 'OP-011') {
+    const item = z.object({ id: z.string(), status: z.string(), created: z.string().optional(), status_check: z.string().optional(), credits_left: z.number().optional(), size: z.number().optional() })
+    const result = parse(z.object({ matches: z.array(item), total: z.number().int().nonnegative() }), raw)
+    return { items: result.matches, total: result.total, pagination: 'undocumented', complete: result.matches.length >= result.total }
+  }
+  if (operation.id === 'OP-012') {
+    const schema = z.object({ id: z.string(), status: z.string(), count: z.number().int().nonnegative().optional(), created: z.string().optional() })
+    let result = parse(schema, raw)
+    if (result.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Scan does not match the selection', 'Retry the selected scan')
+    const attempts = numberOption(flags, '--poll-attempts', 1, 100)
+    const interval = numberOption(flags, '--poll-interval-ms', 1000, 30000)
+    while (requests < attempts && !['DONE', 'FAILED', 'CANCELLED'].includes(result.status.toUpperCase())) {
+      if (Date.now() + interval >= deadline) return { ...result, polling: 'timeout' }
+      await new Promise(resolve => setTimeout(resolve, interval))
+      try {
+        const next = parse(schema, await dispatch(path, {}, false))
+        if (next.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Scan does not match the selection', 'Retry the selected scan')
+        result = next
+      } catch (error) {
+        return { ...result, polling: 'error', error: error instanceof ToolError ? error.code : 'UPSTREAM_ERROR' }
+      }
+    }
+    return { ...result, polling: ['DONE', 'FAILED', 'CANCELLED'].includes(result.status.toUpperCase()) ? 'complete' : 'attempt-limit' }
+  }
   if (operation.id === 'OP-036') {
     const member = z.object({ username: z.string(), email: z.string() })
     return parse(z.object({ id: z.string(), name: z.string(), created: z.string().optional(), admins: z.array(member), members: z.array(member), upgrade_type: z.string().optional(), domains: z.array(z.string()), logo: z.boolean() }), raw)

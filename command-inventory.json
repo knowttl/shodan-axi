@@ -206,6 +206,63 @@
       "arguments": []
     },
     {
+      "command": "scan protocols",
+      "operation": "OP-008",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "scan list",
+      "operation": "OP-011",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "scan status",
+      "operation": "OP-012",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout",
+        "--poll-attempts",
+        "--poll-interval-ms"
+      ],
+      "arguments": [
+        {
+          "name": "id"
+        }
+      ]
+    },
+    {
       "command": "domain",
       "operation": "OP-040",
       "effect": "read",
@@ -693,6 +750,58 @@
         "--timeout"
       ],
       "arguments": []
+    },
+    {
+      "command": "scan submit",
+      "operation": "OP-009",
+      "effect": "write",
+      "cost": "scan",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--scan-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--force"
+      ],
+      "arguments": [
+        {
+          "name": "targets"
+        }
+      ]
+    },
+    {
+      "command": "scan internet",
+      "operation": "OP-010",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--scan-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "port"
+        },
+        {
+          "name": "protocol"
+        }
+      ]
     },
     {
       "command": "alert create",

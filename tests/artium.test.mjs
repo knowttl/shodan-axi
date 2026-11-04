@@ -87,6 +87,9 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         '/notifier/provider': { email: { required: ['to'] } },
         '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', args: { to: 'private@example.test' } },
         '/org': { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' },
+        '/shodan/protocols': { https: 'Synthetic HTTPS module' },
+        '/shodan/scans': { matches: [{ id: 'scan-a', status: 'PROCESSING', api_key: 'issued-secret' }], total: 2 },
+        '/shodan/scan/scan-a': { id: 'scan-a', status: 'PROCESSING', count: 2, api_key: 'issued-secret' },
       }
       response.end(JSON.stringify(bodies[url.pathname]))
     })
@@ -222,7 +225,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeHistoryCredentials)
         }
       }
-      if (['B3.1', 'B3.2'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.1', 'B3.2', 'B3.3'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['alert', 'info', 'alert-a'])).id, 'alert-a')
         assert.equal((await read(['alert', 'list'])).items[0].id, 'alert-a')
         assert.equal((await read(['alert', 'triggers'])).items[0].rule, '*')
@@ -258,6 +261,24 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           ['org', 'remove', 'existing@example.test'],
           ['org', 'add', 'new@example.test', '--allow-operation', 'OP-037', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
           ['org', 'remove', 'existing@example.test', '--allow-operation', 'OP-038', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
+        ]) {
+          assert.notEqual((await run(args)).code, 0)
+          assert.equal(requests.length, before, JSON.stringify(args))
+          assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
+        }
+      }
+      if (process.env.SHODAN_TEST_SLICE === 'B3.3' || !process.env.SHODAN_TEST_SLICE) {
+        assert.equal((await read(['scan', 'protocols'])).https, 'Synthetic HTTPS module')
+        const list = await read(['scan', 'list'])
+        assert.equal(list.items[0].id, 'scan-a')
+        assert.equal(list.complete, false)
+        assert.equal(Object.hasOwn(list.items[0], 'api_key'), false)
+        assert.equal((await read(['scan', 'status', 'scan-a'])).status, 'PROCESSING')
+        const before = requests.length; const beforeCredentials = credentialReads
+        for (const args of [
+          ['scan', 'submit', '192.0.2.0/31'], ['scan', 'internet', '443', 'https'],
+          ['scan', 'submit', '192.0.2.0/31', '--force', '--allow-operation', 'OP-009', '--scan-credit-budget', '2', '--max-requests', '1', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
+          ['scan', 'internet', '443', 'https', '--allow-operation', 'OP-010', '--scan-credit-budget', '1', '--accept-unknown-cost', '--max-requests', '1', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
         ]) {
           assert.notEqual((await run(args)).code, 0)
           assert.equal(requests.length, before, JSON.stringify(args))

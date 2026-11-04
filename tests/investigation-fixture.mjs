@@ -23,6 +23,7 @@ export async function withInvestigation(check) {
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (mode === 'scan-poll-failure' && url.pathname === '/shodan/scan/scan-a' && calls.filter(call => call.path === url.pathname).length > 1) { response.writeHead(503); response.end('{}'); return }
       if (mode === 'denied') { response.writeHead(403); response.end('{"error":"denied"}'); return }
       if (mode === 'redirect') { response.writeHead(301, { location: 'https://invalid.example/' }); response.end(); return }
       if (mode === 'malformed') { response.end('{broken'); return }
@@ -33,6 +34,11 @@ export async function withInvestigation(check) {
         for await (const chunk of request) chunks.push(chunk)
         const input = Buffer.concat(chunks).toString()
         calls.at(-1).body = input
+        if (request.method === 'POST' && ['/shodan/scan', '/shodan/scan/internet'].includes(url.pathname)) {
+          if (mode === 'lost-write') { request.socket.destroy(); return }
+          if (mode === 'scan-rejected') { response.end('{"id":"scan-a","count":2,"credits_left":98,"error":"rejected"}'); return }
+          response.end(url.pathname === '/shodan/scan' ? '{"id":"scan-a","count":2,"credits_left":98}' : '{"id":"scan-internet"}'); return
+        }
         const orgMember = /^\/org\/member\/([^/]+)$/.exec(url.pathname)
         if (orgMember) {
           const email = decodeURIComponent(orgMember[1])
@@ -149,6 +155,9 @@ export async function withInvestigation(check) {
         '/notifier/provider': { email: { required: ['to'] }, telegram: { required: ['chat_id', 'token'] } },
         '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } },
         '/org': organization,
+        '/shodan/protocols': { https: 'Synthetic HTTPS module' },
+        '/shodan/scans': { matches: [{ id: 'scan-a', status: 'PROCESSING', api_key: 'issued-secret' }], total: 2 },
+        '/shodan/scan/scan-a': { id: 'scan-a', status: 'PROCESSING', count: 2, created: '2026-01-01', api_key: 'issued-secret' },
       }
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
