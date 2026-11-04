@@ -28,6 +28,32 @@ export async function withInvestigation(check) {
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (mode.startsWith('stream') && (url.pathname.startsWith('/shodan/banners') || url.pathname.startsWith('/shodan/asn/') || url.pathname.startsWith('/shodan/countries/') || url.pathname.startsWith('/shodan/ports/') || url.pathname.startsWith('/shodan/vulns/') || url.pathname === '/shodan/custom' || url.pathname === '/shodan/alert' || url.pathname.startsWith('/shodan/alert/') || url.pathname.startsWith('/shodan/tags/') || url.pathname.startsWith('/threatnet/'))) {
+        if (mode === 'stream-denied') { response.writeHead(403); response.end(); return }
+        if (mode === 'stream-rate-limited') { response.writeHead(429); response.end(); return }
+        if (mode === 'stream-connection-error') { request.socket.destroy(); return }
+        if (mode === 'stream-no-headers') return
+        if (mode === 'stream-idle') { response.write('\n'); return }
+        if (mode === 'stream-partial') { response.end('{"ip_str":"192.0.2.'); return }
+        if (mode === 'stream-malformed') { response.end('{"bad":true}\n'); return }
+        const threat = url.pathname.startsWith('/threatnet/')
+        const first = threat ? { synthetic_sequence: 1, text: 'Café' } : { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: 'Café' }
+        const second = threat ? { synthetic_sequence: 2, text: 'second' } : { ip_str: '192.0.2.8', port: 443, transport: 'tcp', timestamp: '2026-01-02', data: 'second' }
+        const sse = mode.startsWith('stream-sse')
+        response.setHeader('content-type', sse ? 'text/event-stream' : 'application/json')
+        const frame = value => sse ? `data: ${JSON.stringify(value)}\n\n` : `${JSON.stringify(value)}\n`
+        if (mode.endsWith('-byte-cut')) { response.end(`${frame(first)}${frame(second)}${frame({ ...first, data: 'x'.repeat(600) })}`); return }
+        if (mode.includes('-invalid-')) {
+          const suffix = mode.endsWith('-json') ? '{broken}\n' : mode.endsWith('-schema') ? '[]\n' : mode.endsWith('-utf8-eof') ? Buffer.from([0xc3]) : Buffer.from([0xff, 10])
+          response.end(Buffer.concat([Buffer.from(`${frame(first)}${frame({ event: 'debug', discarded: 3 })}`), Buffer.isBuffer(suffix) ? suffix : Buffer.from(sse ? `data: ${suffix}\n` : suffix)])); return
+        }
+        if (mode === 'stream-wait') { response.write(frame(first)); return }
+        const payload = Buffer.from(`\n${frame(first)}${frame({ event: 'debug', discarded: 3 })}${frame(second)}`)
+        const split = payload.indexOf(Buffer.from('é')) + 1
+        response.write(payload.subarray(0, split))
+        setImmediate(() => { response.end(payload.subarray(split)) })
+        return
+      }
       if (mode === 'scan-poll-failure' && url.pathname === '/shodan/scan/scan-a' && calls.filter(call => call.path === url.pathname).length > 1) { response.writeHead(503); response.end('{}'); return }
       if (mode === 'denied') { response.writeHead(403); response.end('{"error":"denied"}'); return }
       if (mode === 'redirect') { response.writeHead(301, { location: 'https://invalid.example/' }); response.end(); return }
@@ -217,18 +243,20 @@ export async function withInvestigation(check) {
     const preload = join(root, 'routing.mjs')
     const timerPreload = join(root, 'timers.mjs')
     await writeFile(timerPreload, `if (process.env.TEST_SHORT_REQUEST_TIMEOUT) { const schedule = globalThis.setTimeout; globalThis.setTimeout = (callback, delay, ...args) => schedule(callback, delay === 30000 ? 1000 : delay, ...args) }\n`)
-    await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io', 'https://geonet.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); outgoing.on('error', error => process.stderr.write('Fake transport error: ' + (error.code ?? error.message) + '\\n')); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
+    await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io', 'https://geonet.shodan.io', 'https://stream.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); outgoing.on('error', error => process.stderr.write('Fake transport error: ' + (error.code ?? error.message) + '\\n')); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
     const config = join(root, 'config.json')
     await writeFile(config, JSON.stringify({ version: 1, defaultProfile: 'selected', profiles: { selected: { auth: 'api-key', origin, apiKey: { env: 'TEST_SHODAN_KEY' } } } }), { mode: 0o600 })
     const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload} --import=${timerPreload}`, NODE_EXTRA_CA_CERTS: certFile }
-    const run = (args, overrides = {}) => new Promise((resolve, reject) => {
+    const run = (args, overrides = {}, onChild = () => {}) => new Promise((resolve, reject) => {
       const child = spawn(executable, [...args, '--json'], { cwd: root, env: { ...env, ...overrides }, signal: AbortSignal.timeout(10000) })
+      onChild(child)
       let stdout = ''; let stderr = ''
       child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk })
       child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk })
       child.on('error', reject)
       child.on('close', code => {
-        const body = JSON.parse(stdout)
+        const lines = stdout.trim().split('\n')
+        const body = JSON.parse(lines.at(-1))
         resolve({ code, stdout, stderr, body })
       })
     })
