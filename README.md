@@ -47,6 +47,14 @@ The execution `requests` count includes search requests and, for `alert download
 Exports that stop before all results are saved, or include provider-truncated records, report `complete: false` and retain a `.partial` suffix, even when `--fields` omits truncation metadata.
 `SHODAN_AXI_READ_ONLY=true` refuses execution of these search exports; previews remain available.
 Hosted execution refuses chargeable exports and dataset transfers before retrieving credentials.
+Native `stream` supports one of `--asn`, `--countries`, `--ports`, `--vulns`, `--custom-filters`, `--alert` or `--tags`, or the unfiltered banner stream.
+`threatnet events`, `threatnet backscatter` and `threatnet ssh` select the separate Threatnet streams.
+Streams require an exact `--allow-operation`, `--accept-unknown-cost`, `--limit`, `--max-bytes`, `--timeout` and `--idle-timeout`, followed by the same protected preview and confirmation used for other active operations.
+Timeouts use milliseconds; results report their stop reason, discarded debug count and incomplete record count, and connections are never automatically retried.
+Native `--follow` emits JSON records and requires an absolute `--datadir`, `--max-file-bytes` and `--retain`; gzip output rotates by UTC day or file size using the selected `--compresslevel`.
+Stream connections are refused when `SHODAN_AXI_READ_ONLY=true`.
+Hosted execution refuses every stream operation before retrieving credentials.
+Threatnet event schemas and tag-filtered stream availability remain unverified against the live service.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
 The native `geonet ping`, `geonet geoping`, `geonet dns` and `geonet geodns` commands perform active probes without an API key.
 Ping commands take an IP address; DNS commands take a hostname and accept `--type <record-type>` (default `A`).
@@ -87,7 +95,7 @@ GeoNet contacts `https://geonet.shodan.io` independently of profile configuratio
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B4.2 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B5.1 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.
