@@ -68,6 +68,24 @@ test('alert download previews normalized monitored networks before searching', {
   })
 })
 
+for (const { name, limit, budget, total, complete, count } of [
+  { name: 'result limit', limit: 2, budget: 2, total: null, complete: false, count: 2 },
+  { name: 'credit budget', limit: 100, budget: 1, total: null, complete: false, count: 2 },
+  { name: 'all networks visited', limit: 4, budget: 2, total: 4, complete: true, count: 4 },
+]) test(`alert export reports selection total with ${name}`, { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, setMode }) => {
+    setMode('alert-export-networks')
+    const args = ['alert', 'download', '--filename', join(root, 'alerts.json.gz'), '--limit', String(limit), '--max-bytes', '10000', '--max-requests', '6', '--query-credit-budget', String(budget), '--allow-operation', 'OP-003']
+    const preview = await run(args)
+    assert.equal(preview.body.total, 4, preview.stdout)
+    const result = await run([...args, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.total, total, result.stdout)
+    assert.equal(result.body.complete, complete, result.stdout)
+    assert.equal(result.body.count, count, result.stdout)
+    assert.equal(gunzipSync(await readFile(result.body.path)).toString().trim().split('\n').length, count)
+  })
+})
+
 test('resuming rejects a changed source before appending bytes', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, setMode, allowFixtureStorage }) => {
     await allowFixtureStorage(); setMode('dataset-interrupt')

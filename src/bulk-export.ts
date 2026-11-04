@@ -95,14 +95,14 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   const partial = `${draft.destination}.partial`
   await preparePrivateDirectory(dirname(draft.destination))
   for (const path of [draft.destination, partial]) try { await lstat(path); throw new ToolError('DESTINATION_EXISTS', 'Output already exists', 'Choose another destination') } catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
-  let count = 0; let size = 0; let total = 0; let requests = 0; let finishedQueries = 0
+  let count = 0; let size = 0; let total = 0; let requests = 0; let finishedQueries = 0; let countedQueries = 0
   async function* rows(): AsyncGenerator<string> {
     for (const query of draft.queries ?? [draft.query]) {
     for (let pageNumber = 1; count < draft.limit && requests < draft.maxRequests - 2 && requests < draft.budget; pageNumber++) {
       requests++
       const response = page.safeParse(await requestJson(selection.profile.origin, '/shodan/host/search', key, { query, page: String(pageNumber), minify: 'false' }))
       if (!response.success) throw new ToolError('INVALID_RESPONSE', 'Invalid search response', 'Inspect the service response')
-      if (pageNumber === 1) total += response.data.total
+      if (pageNumber === 1) { total += response.data.total; countedQueries++ }
       if (!response.data.matches.length) { finishedQueries++; break }
       for (const row of response.data.matches) {
         if (count >= draft.limit) break
@@ -126,5 +126,5 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   if (savedBytes > draft.maxBytes) throw new ToolError('LIMIT_REACHED', 'Compressed export exceeds the byte limit', 'Increase the bound or narrow the selection')
   const complete = finishedQueries === (draft.queries?.length ?? 1) && count >= total
   if (complete) { await link(partial, draft.destination); await unlink(partial) }
-  return { path: complete ? draft.destination : partial, count, total, requests, complete, bytes: savedBytes, sha256: savedHash.digest('hex'), uncompressedBytes: size }
+  return { path: complete ? draft.destination : partial, count, total: countedQueries === (draft.queries?.length ?? 1) ? total : null, requests, complete, bytes: savedBytes, sha256: savedHash.digest('hex'), uncompressedBytes: size }
 }

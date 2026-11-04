@@ -39,6 +39,7 @@ Hosted upload and file-based transformations are deferred pending a defined uplo
 Real dataset downloads are disabled pending a reviewed storage-destination policy.
 `download <query>` and `alert download` preview the selected query, destination, size and credit bounds before requiring exact confirmation.
 These native exports require `--allow-operation OP-003`, `--query-credit-budget`, `--max-requests`, `--max-bytes`, `--limit` and `--filename`.
+Export execution reports `total: null` when bounds prevent visiting every selected network; otherwise `total` covers the full selection.
 Exports that stop before all results are saved with a `.partial` suffix.
 `SHODAN_AXI_READ_ONLY=true` refuses execution of exports and dataset transfers.
 Hosted execution refuses chargeable exports and dataset transfers before retrieving credentials.

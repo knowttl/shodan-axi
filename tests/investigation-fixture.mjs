@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { createTestTls } from './tls-fixture.mjs'
 
 export async function withInvestigation(check) {
@@ -189,6 +190,9 @@ export async function withInvestigation(check) {
           { id: 'alert-b', name: 'Second', filters: { ip: ['192.0.2.9/32'] }, triggers: {}, notifiers: [] },
         ]
       }
+      if (mode === 'alert-export-networks') {
+        values['/shodan/alert/info'] = [{ id: 'alert-a', filters: { ip: ['192.0.2.0/24', '198.51.100.0/24'] } }]
+      }
       if (mode.startsWith('dataset-')) {
         const bytes = Buffer.alloc(1024 * 1024 + 10, 'x')
         values['/shodan/data/raw-daily'] = [{ name: 'synthetic.json', size: bytes.length, sha1: createHash('sha1').update(bytes).digest('hex'), url: `https://127.0.0.1:${server.address().port}/fixture?signature=private-signature` }]
@@ -224,11 +228,18 @@ export async function withInvestigation(check) {
     const origin = `https://127.0.0.1:${server.address().port}`
     const preload = join(root, 'routing.mjs')
     const timerPreload = join(root, 'timers.mjs')
+    const policyPreload = join(root, 'storage-policy.mjs')
+    const policyUrl = pathToFileURL(join(root, 'node_modules/@knowttl/shodan-axi/dist/bulk.js')).href
+    await writeFile(policyPreload, `import { registerHooks } from 'node:module';
+if (process.env.TEST_FIXTURE_STORAGE) registerHooks({ load(url, context, nextLoad) {
+  if (url !== ${JSON.stringify(policyUrl)}) return nextLoad(url, context);
+  return { format: 'module', shortCircuit: true, source: ${JSON.stringify(`export * from '${policyUrl}?original'; export const storageOrigins = Object.freeze([${JSON.stringify(origin)}]);`)} };
+} });\n`)
     await writeFile(timerPreload, `if (process.env.TEST_SHORT_REQUEST_TIMEOUT) { const schedule = globalThis.setTimeout; globalThis.setTimeout = (callback, delay, ...args) => schedule(callback, delay === 30000 ? 1000 : delay, ...args) }\n`)
     await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io', 'https://geonet.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); outgoing.on('error', error => process.stderr.write('Fake transport error: ' + (error.code ?? error.message) + '\\n')); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
     const config = join(root, 'config.json')
     await writeFile(config, JSON.stringify({ version: 1, defaultProfile: 'selected', profiles: { selected: { auth: 'api-key', origin, apiKey: { env: 'TEST_SHODAN_KEY' } } } }), { mode: 0o600 })
-    const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload} --import=${timerPreload}`, NODE_EXTRA_CA_CERTS: certFile }
+    const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload} --import=${timerPreload} --import=${policyPreload}`, NODE_EXTRA_CA_CERTS: certFile }
     const run = (args, overrides = {}) => new Promise((resolve, reject) => {
       const child = spawn(executable, [...args, '--json'], { cwd: root, env: { ...env, ...overrides }, signal: AbortSignal.timeout(10000) })
       let stdout = ''; let stderr = ''
@@ -241,10 +252,7 @@ export async function withInvestigation(check) {
       })
     })
     const allowFixtureStorage = async () => {
-      const module = join(root, 'node_modules/@knowttl/shodan-axi/dist/bulk.js')
-      const code = await readFile(module, 'utf8')
-      if (!code.includes('export const storageOrigins = Object.freeze([]);')) throw new Error('Storage policy fixture does not match')
-      await writeFile(module, code.replace('export const storageOrigins = Object.freeze([]);', `export const storageOrigins = Object.freeze([${JSON.stringify(origin)}]);`))
+      env.TEST_FIXTURE_STORAGE = 'true'
     }
     await check({ root, calls, run, allowFixtureStorage, setMode: value => { mode = value } })
   } finally {
