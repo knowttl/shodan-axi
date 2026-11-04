@@ -6,7 +6,7 @@ Mark every check that cannot be performed as pending.
 
 ## Release preparation
 
-- [ ] Run `npm ci`, `npm run check`, and `npm run check:slice -- --id B6.1 --paths native,artium --offline --with-dependencies` with a matching Artium fixture.
+- [ ] Run the [offline verification commands](README.md) with the documented hosted prerequisites and a matching Artium fixture.
 - [ ] Inspect the packed tarball, executable, credential schema, generated inventory and skill.
 - [ ] Verify setup in disposable Claude Code, Codex and OpenCode homes, including a second install and ordinary command behavior.
 - [ ] Run the applicable checks on Windows, Linux and an unprivileged Artium container; record platform and runtime versions.

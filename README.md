@@ -48,13 +48,15 @@ Exports that stop before all results are saved, or include provider-truncated re
 `SHODAN_AXI_READ_ONLY=true` refuses execution of these search exports; previews remain available.
 Hosted execution refuses chargeable exports and dataset transfers before retrieving credentials.
 Native `stream` supports one of `--asn`, `--countries`, `--ports`, `--vulns`, `--custom-filters`, `--alert` or `--tags`, or the unfiltered banner stream.
-Use `--fields` to select event fields, `--separator` and `--color` or `--no-color` for a text view, and `--quiet` to suppress event output while retaining the final accounting.
+Use comma-separated dotted `--fields` to select event fields and `--quiet` to suppress event output while retaining the final accounting.
+For buffered output, `--separator` or `--color` or `--no-color` adds a text view; JSON output includes it as `display`.
 `threatnet events`, `threatnet backscatter` and `threatnet ssh` select the separate Threatnet streams.
 Streams require an exact `--allow-operation`, `--accept-unknown-cost`, `--limit`, `--max-bytes`, `--timeout` and `--idle-timeout`, followed by the same protected preview and confirmation used for other active operations.
 Timeouts use milliseconds; the idle timer starts at dispatch and resets on each incoming chunk, including debug records and SSE keepalives.
 Every stream execution ends with one summary carrying the approved `limit`, `maxBytes`, `timeout` and `idleTimeout`, accepted event `count`, consumed `bytes`, stop reason, discarded debug count and incomplete record count.
 Execution failures attach their error to that summary and exit nonzero; connections are never automatically retried.
-Native `--follow` requires `--json` or `--output json`, an absolute `--datadir`, `--max-file-bytes` and `--retain`; it emits one JSON object containing `event` per accepted record, followed by the summary.
+Native `--follow` requires `--json` or `--output json`, an absolute `--datadir`, `--max-file-bytes` and `--retain`; it emits one JSON object containing `event` per accepted record unless `--quiet` is set, followed by the summary.
+Field selection affects emitted events; follow storage retains full records even with `--fields` or `--quiet`.
 Native `radar` uses the same stream selectors and bounds, renders a map in an interactive terminal and stops on `q`.
 For non-interactive use, the result includes a bounded map snapshot; `--filename` saves that snapshot to a private absolute path.
 Follow mode retains the same read bounds; gzip JSONL files rotate by UTC day or compressed file size, and `--retain` bounds the number of retained stream files.
@@ -82,7 +84,8 @@ Both commands preview their active effects and require exact confirmation before
 For bounded collection, add a positive `--wait` in seconds, `--limit`, `--max-bytes` and `--idle-timeout` in milliseconds.
 Omitting `--wait` or supplying a nonpositive integer submits immediately without collection.
 Targeted collection also requires OP-013, OP-015 and OP-053, an unknown-cost acceptance, a query-credit budget of at least 8 and at least 10 requests; its preview includes a temporary alert and its cleanup.
-Internet collection requires OP-049 and at least two requests; `--quiet` does not suppress submission.
+Use `--verbose` on targeted collection to add a JSONL display of collected events to the final output.
+Internet collection requires OP-049 and at least two requests; `--quiet` suppresses returned events while retaining scan accounting, submission and optional file output.
 The optional absolute `--filename` saves matching results as gzip JSONL.
 Results are deduplicated by address, port and transport and filtered to the requested targets or port.
 The stream reports matching observations, not proof that the scan produced them, and stopping collection does not cancel the vendor scan.
@@ -112,11 +115,14 @@ Offline verification uses controlled fakes; live mutations and active probes req
 Provider mutation encoding and live readback contracts remain unverified.
 
 Use `shodan-axi setup claude`, `shodan-axi setup codex` or `shodan-axi setup opencode` to opt into local session integration for that agent.
-The integration reports local authentication status at session start and can be installed again to update the executable path.
+Claude and Codex run local authentication status at session start; OpenCode injects it into system context.
+Setup writes Claude's `settings.json` under `CLAUDE_CONFIG_DIR` (default `~/.claude`), Codex's `hooks.json` and enables `features.hooks` in `config.toml` under `CODEX_HOME` (default `~/.codex`), or OpenCode's `opencode/plugins/shodan-axi.js` under `XDG_CONFIG_HOME` (default `~/.config`).
+Run setup again after relocating the executable to update its recorded absolute path.
 Alternatively, install the packaged `shodan-axi` skill for on-demand guidance; `shodan-axi skill` prints its contents.
 
 For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B6.1 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
+Hosted reads also require Docker and a prebuilt local `artium-test-node24` image, overridable with `ARTIUM_TEST_IMAGE`; the check runs it without network access as an unprivileged user and never pulls it.
 See [the commissioning checklist](COMMISSIONING.md) for release evidence and separately authorized live checks.
 The Artium companion owns session admission, authorization and revision rechecks, quotas, replay accounting, revocation and private-directory cleanup; this package owns the worker protocol.
 The companion must launch the worker with a private inherited duplex fd 3 and send the first JSONL frame as `{ "version": 1, "type": "admit", "requestId": "<unique>", "admission": "<session-random-binding>", "profilePath": "<private-absolute-path>" }`.
