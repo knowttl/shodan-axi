@@ -7,6 +7,38 @@ import { withInvestigation } from './investigation-fixture.mjs'
 
 const permit = ['--allow-operation', 'OP-015', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3']
 
+for (const [command, operation, credit, maximum] of [
+  ['remove', 'OP-015', '1', 3],
+  ['clear', 'OP-015', '1', 3],
+  ['domain', 'OP-040,OP-013,OP-019', '4', 6],
+  ['import', 'OP-013', '1', 4],
+]) {
+  test(`${command} preview requires the complete confirmation request budget`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ root, run, calls }) => {
+      const path = join(root, 'import.json')
+      await writeFile(path, JSON.stringify([{ name: 'Imported', filters: { ip: ['192.0.2.9'] } }]), { mode: 0o600 })
+      const args = {
+        remove: ['alert', 'remove', 'alert-a'],
+        clear: ['alert', 'clear'],
+        domain: ['alert', 'domain', 'example.test', '--triggers', 'new_service'],
+        import: ['alert', 'import', path],
+      }[command]
+      const options = ['--allow-operation', operation, '--accept-unknown-cost', '--query-credit-budget', credit, '--max-requests']
+      const rejected = await run([...args, ...options, String(maximum - 1)])
+      assert.equal(rejected.body.error, 'CREDIT_BUDGET_REQUIRED')
+      assert.equal(rejected.body.token, undefined)
+      assert.equal(calls.filter(call => call.method !== 'GET').length, 0)
+      const accepted = [...args, ...options, String(maximum)]
+      const preview = await run(accepted)
+      assert.equal(preview.body.status, 'preview')
+      const before = calls.length
+      const result = await run([...accepted, '--execute', '--confirm', preview.body.token])
+      assert.equal(result.body.status, 'completed')
+      assert.equal(calls.length - before, maximum)
+    })
+  })
+}
+
 test('delete requires a bound preview and dispatches at most once', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, calls }) => {
     assert.notEqual((await run(['alert', 'remove', 'alert-a'])).code, 0)
@@ -141,13 +173,16 @@ test('import validates all input and stops after an uncertain mutation', { timeo
 test('import executes only the confirmed ordered actions without exposing notifier input', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, calls }) => {
     const path = join(root, 'import.json.gz')
-    const input = [{ name: 'Imported', filters: { ip: ['192.0.2.0/24'] }, triggers: { new_service: {} }, notifiers: [{ id: 'old', provider: 'email', args: { to: 'hidden@example.test' } }] }]
+    const input = [{ name: 'Imported {alert-0}', filters: { ip: ['192.0.2.0/24'] }, triggers: { new_service: {} }, notifiers: [{ id: 'old', provider: 'email {notifier-0}', args: { to: 'hidden@example.test' } }] }]
     await writeFile(path, gzipSync(JSON.stringify(input)), { mode: 0o600 })
     const options = ['--allow-operation', 'OP-027,OP-013,OP-019,OP-023', '--accept-unknown-cost', '--query-credit-budget', '4', '--max-requests', '10']
     const preview = await run(['alert', 'import', path, ...options])
     const result = await run(['alert', 'import', path, ...options, '--execute', '--confirm', preview.body.token])
     assert.equal(result.body.status, 'completed')
     assert.deepEqual(result.body.steps.map(item => item.operation), ['OP-027', 'OP-013', 'OP-019', 'OP-023'])
+    assert.deepEqual(result.body.steps.slice(0, 2).map(item => item.target), ['email {notifier-0}', 'Imported {alert-0}'])
+    assert.equal(JSON.parse(calls.find(call => call.method === 'POST' && call.path === '/shodan/alert').body).name, 'Imported {alert-0}')
+    assert.equal(new URLSearchParams(calls.find(call => call.method === 'POST' && call.path === '/notifier').body).get('provider'), 'email {notifier-0}')
     assert.deepEqual(calls.filter(call => call.method !== 'GET').map(call => call.path), ['/notifier', '/shodan/alert', '/shodan/alert/alert-new/trigger/new_service', '/shodan/alert/alert-new/notifier/notifier-new'])
     assert.doesNotMatch(result.stdout + await readFile(join(root, '.local/state/shodan-axi/writes.log'), 'utf8'), /hidden@example/)
   })
@@ -171,10 +206,10 @@ test('import stops when a prior action cannot be verified', { timeout: 30000 }, 
 test('each supported mutation dispatches exactly its selected request', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, calls }) => {
     const createBody = join(root, 'notifier-create.json'); const updateBody = join(root, 'notifier-update.json')
-    await writeFile(createBody, JSON.stringify({ provider: 'email', description: 'Synthetic', args: { to: 'hidden@example.test' } }), { mode: 0o600 })
+    await writeFile(createBody, JSON.stringify({ provider: 'email {EU}', description: 'Synthetic', args: { to: 'hidden@example.test' } }), { mode: 0o600 })
     await writeFile(updateBody, JSON.stringify({ args: { to: 'new@example.test' } }), { mode: 0o600 })
     const cases = [
-      ['OP-013', ['alert', 'create', 'Created', '192.0.2.9'], 'POST', '/shodan/alert'],
+      ['OP-013', ['alert', 'create', 'Production {EU}', '192.0.2.9'], 'POST', '/shodan/alert'],
       ['OP-016', ['alert', 'update', 'alert-a', '192.0.2.0/25'], 'POST', '/shodan/alert/alert-a'],
       ['OP-019', ['alert', 'enable', 'alert-a', 'any'], 'PUT', '/shodan/alert/alert-a/trigger/any'],
       ['OP-020', ['alert', 'disable', 'alert-a', 'any'], 'DELETE', '/shodan/alert/alert-a/trigger/any'],

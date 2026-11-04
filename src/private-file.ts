@@ -110,7 +110,7 @@ export async function appendPrivate(path: string, content: string): Promise<void
   try { file = await open(path, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | constants.O_EXCL | noFollow, 0o600); created = true }
   catch (error) {
     if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-    await readPrivate(path, true)
+    await direct(path, process.platform)
     existing = await lstat(path)
     if (!existing.isFile() || existing.isSymbolicLink()) insecure()
     file = await open(path, constants.O_WRONLY | constants.O_APPEND | noFollow)

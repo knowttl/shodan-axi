@@ -234,7 +234,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
   const granted = value(flags, '--allow-operation')?.split(',') ?? []
   if (!draft.steps.every(step => granted.includes(step.operation)) || !flags.has('--accept-unknown-cost')) throw new ToolError('WRITE_GRANT_REQUIRED', 'Exact operation grants and unknown-cost acceptance are required', 'Pass --allow-operation and --accept-unknown-cost')
   const credit = value(flags, '--query-credit-budget'); const maximum = value(flags, '--max-requests')
-  if (!credit || !/^[1-9]\d*$/.test(credit) || Number(credit) < draft.steps.length + (draft.command === 'alert domain' ? 2 : 0) || Number(credit) > 1000 || !maximum || !/^[1-9]\d*$/.test(maximum) || Number(maximum) > 1000 || Number(maximum) < draft.preconditions.length + (flags.has('--execute') ? 2 * draft.steps.length : 0) + (draft.command === 'alert domain' || (draft.command === 'alert clear' && !flags.has('--execute')) ? 1 : 0)) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Explicit spending and request bounds are required', 'Pass sufficient --query-credit-budget and --max-requests')
+  if (!credit || !/^[1-9]\d*$/.test(credit) || Number(credit) < draft.steps.length + (draft.command === 'alert domain' ? 2 : 0) || Number(credit) > 1000 || !maximum || !/^[1-9]\d*$/.test(maximum) || Number(maximum) > 1000 || Number(maximum) < draft.preconditions.length + Math.max(2 * draft.steps.length, draft.command === 'alert clear' ? 1 : 0) + (draft.command === 'alert domain' ? 1 : 0)) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Explicit spending and request bounds are required', 'Pass sufficient --query-credit-budget and --max-requests')
   const root = stateRoot(); const planDir = join(root, 'plans')
   const signingKey = await planKey(root)
   const selectionBinding = digest(JSON.stringify({ name: selection.name, source: selection.source, profile: selection.profile }))
@@ -272,7 +272,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
       if (!selected) throw new ToolError('OUTCOME_UNKNOWN', 'A prerequisite identifier is unavailable', 'Inspect completed steps before retrying')
       return encode ? encodeURIComponent(selected) : selected
     })
-    const step = { ...original, path: resolve(original.path, true), target: resolve(original.target, false), readback: resolve(original.readback, true) }
+    const step = { ...original, path: resolve(original.path, true), target: ['OP-013', 'OP-027'].includes(original.operation) ? original.target : resolve(original.target, false), readback: resolve(original.readback, true) }
     await appendPrivate(log, `${JSON.stringify(clean({ token, operation: step.operation, target: step.target, phase: 'intent', at: Date.now() }, key))}\n`)
     try {
       const response = await requestJson(selection.profile.origin, step.path, key, {}, 1024 * 1024, 30000, false, undefined, { method: step.method, ...(step.body === undefined ? {} : { body: step.body }), ...(step.contentType === undefined ? {} : { contentType: step.contentType }) })
