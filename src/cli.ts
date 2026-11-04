@@ -71,7 +71,9 @@ export async function main(args: string[]): Promise<void> {
       const draft = streamDraft(words, flags)
       const selected = await select(configPath(option('--config')), option('--profile'))
       key = await secret(selected)
-      output(clean(await stream(draft, flags, selected, key), key), json); return
+      const result = await stream(draft, flags, selected, key)
+      if (result && typeof result === 'object' && 'error' in result) process.exitCode = 1
+      output(clean(result, key), json); return
     }
     if (words[0] === 'alert' && words[1] === 'download') {
       if (flags.has('--help')) { output({ command: 'alert download', help: 'alert download [--alert-id <id>] --filename <path> --limit <count> --max-bytes <bytes> --max-requests <count> --allow-operation OP-003 --query-credit-budget <credits>; preview first, then repeat with --execute --confirm <token>' }, json); return }

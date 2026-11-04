@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, readFile, readdir, symlink } from 'node:fs/promises'
+import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { gunzipSync } from 'node:zlib'
@@ -134,5 +134,88 @@ test('stream byte bounds and upstream denials never fabricate events', { timeout
     const deniedPreview = await run(args)
     assert.equal((await run([...args, '--execute', '--confirm', deniedPreview.body.token])).body.error, 'UPSTREAM_ERROR')
     assert.equal((await run([...args, '--execute', '--confirm', deniedPreview.body.token])).body.error, 'PLAN_NOT_FOUND')
+  })
+})
+
+test('byte cuts preserve complete events in bounded and follow reads', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, setMode }) => {
+    for (const mode of ['stream-byte-cut', 'stream-sse-byte-cut']) {
+      for (const follow of [false, true]) {
+        setMode(mode)
+        const directory = join(root, `${mode}-${follow}`)
+        const args = ['stream', ...options('OP-046').map(value => value === '2' ? '10' : value === '10000' ? '500' : value)]
+        if (follow) args.push('--follow', '--datadir', directory, '--max-file-bytes', '1000', '--retain', '1')
+        const preview = await run(args)
+        const result = await run([...args, '--execute', '--confirm', preview.body.token])
+        assert.equal(result.code, 0, result.stdout)
+        assert.equal(result.body.stopReason, 'max-bytes')
+        assert.equal(result.body.bytes, 500)
+        assert.equal(result.body.count, 2)
+        assert.equal(result.body.partialRecordCount, 1)
+        const events = follow ? result.stdout.trim().split('\n').slice(0, -1).map(line => JSON.parse(line).event) : result.body.events
+        assert.deepEqual(events.map(event => event.ip_str), ['192.0.2.7', '192.0.2.8'])
+        if (follow) {
+          const files = await readdir(directory)
+          const saved = gunzipSync(await readFile(join(directory, files[0]))).toString().trim().split('\n').map(line => JSON.parse(line))
+          assert.deepEqual(saved, events)
+        }
+      }
+    }
+  })
+})
+
+test('invalid input preserves accepted events and loss metadata with a failing exit', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, setMode }) => {
+    for (const mode of ['stream-invalid-json', 'stream-invalid-schema', 'stream-invalid-utf8', 'stream-invalid-utf8-eof', 'stream-sse-invalid-json', 'stream-sse-invalid-schema', 'stream-sse-invalid-utf8', 'stream-sse-invalid-utf8-eof']) {
+      for (const follow of [false, true]) {
+        setMode(mode)
+        const args = ['stream', ...options('OP-046')]
+        if (follow) args.push('--follow', '--datadir', join(root, `${mode}-${follow}`), '--max-file-bytes', '1000', '--retain', '1')
+        const preview = await run(args)
+        const result = await run([...args, '--execute', '--confirm', preview.body.token])
+        assert.equal(result.code, 1, result.stdout)
+        assert.equal(result.body.error, 'INVALID_RESPONSE')
+        assert.equal(result.body.stopReason, 'invalid-response')
+        assert.equal(result.body.count, 1)
+        assert.equal(result.body.debugDiscarded, 3)
+        const event = follow ? JSON.parse(result.stdout.split('\n')[0]).event : result.body.events[0]
+        assert.equal(event.data, 'Café')
+      }
+    }
+  })
+})
+
+test('filesystem failures are reported as storage errors with a failing exit', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run, setMode }) => {
+    setMode('stream-json')
+    const preload = join(root, 'storage-failure.mjs')
+    await writeFile(preload, `import fs from 'node:fs/promises'; import { syncBuiltinESMExports } from 'node:module';
+const fail = () => { throw Object.assign(new Error('disk failure'), { code: 'ENOSPC' }) };
+for (const name of ['open', 'readdir', 'lstat', 'unlink']) {
+  const original = fs[name];
+  fs[name] = async function (path, ...args) {
+    const selected = String(path).includes('/stream-output/');
+    if (selected && (name !== 'lstat' || String(path).endsWith('.jsonl.gz')) && process.env.TEST_STORAGE_FAILURE === name) fail();
+    const result = await original.call(this, path, ...args);
+    if (selected && name === 'open') for (const method of ['writeFile', 'close']) {
+      const originalMethod = result[method].bind(result);
+      result[method] = async (...values) => { if (process.env.TEST_STORAGE_FAILURE === method) { if (method === 'close') await originalMethod(); fail() } return originalMethod(...values) };
+    }
+    return result;
+  };
+}
+syncBuiltinESMExports();`)
+    for (const failure of ['open', 'readdir', 'lstat', 'unlink', 'writeFile', 'close']) {
+      const directory = join(root, 'stream-output', failure)
+      await mkdir(directory, { recursive: true, mode: 0o700 })
+      await writeFile(join(directory, 'stream-2026-01-01-00000000-0000-4000-8000-000000000001.jsonl.gz'), '')
+      const args = ['stream', ...options('OP-046'), '--follow', '--datadir', directory, '--max-file-bytes', '1000', '--retain', '1']
+      const preview = await run(args)
+      const result = await run([...args, '--execute', '--confirm', preview.body.token], { TEST_STORAGE_FAILURE: failure, NODE_OPTIONS: `--import=${join(root, 'routing.mjs')} --import=${preload}` })
+      assert.equal(result.code, 1, result.stdout)
+      assert.equal(result.body.error, 'STORAGE_ERROR', result.stdout)
+      assert.equal(result.body.stopReason, 'storage-error')
+      assert.equal(result.body.count, failure === 'close' ? 2 : 0)
+    }
   })
 })

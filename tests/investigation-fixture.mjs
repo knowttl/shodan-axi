@@ -36,9 +36,14 @@ export async function withInvestigation(check) {
         const threat = url.pathname.startsWith('/threatnet/')
         const first = threat ? { synthetic_sequence: 1, text: 'Café' } : { ip_str: '192.0.2.7', port: 443, transport: 'tcp', timestamp: '2026-01-01', data: 'Café' }
         const second = threat ? { synthetic_sequence: 2, text: 'second' } : { ip_str: '192.0.2.8', port: 443, transport: 'tcp', timestamp: '2026-01-02', data: 'second' }
-        const sse = mode === 'stream-sse'
+        const sse = mode.startsWith('stream-sse')
         response.setHeader('content-type', sse ? 'text/event-stream' : 'application/json')
         const frame = value => sse ? `data: ${JSON.stringify(value)}\n\n` : `${JSON.stringify(value)}\n`
+        if (mode.endsWith('-byte-cut')) { response.end(`${frame(first)}${frame(second)}${frame({ ...first, data: 'x'.repeat(600) })}`); return }
+        if (mode.includes('-invalid-')) {
+          const suffix = mode.endsWith('-json') ? '{broken}\n' : mode.endsWith('-schema') ? '[]\n' : mode.endsWith('-utf8-eof') ? Buffer.from([0xc3]) : Buffer.from([0xff, 10])
+          response.end(Buffer.concat([Buffer.from(`${frame(first)}${frame({ event: 'debug', discarded: 3 })}`), Buffer.isBuffer(suffix) ? suffix : Buffer.from(sse ? `data: ${suffix}\n` : suffix)])); return
+        }
         if (mode === 'stream-wait') { response.write(frame(first)); return }
         const payload = Buffer.from(`\n${frame(first)}${frame({ event: 'debug', discarded: 3 })}${frame(second)}`)
         const split = payload.indexOf(Buffer.from('é')) + 1
