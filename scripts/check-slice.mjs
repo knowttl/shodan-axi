@@ -35,7 +35,7 @@ for (const path of paths) {
     if (!tests.includes(test)) tests.push(test)
   }
   if (id === 'B3.1') {
-    for (const test of path === 'native' ? ['tests/monitor-read.test.mjs', 'tests/monitor-write.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
+    for (const test of path === 'native' ? ['tests/monitor-read.test.mjs', 'tests/monitor-write.test.mjs', 'tests/tls.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
   if (!tests.length || tests.some(file => !existsSync(file)) || (path === 'artium' && (!process.env.ARTIUM_FIXTURE_ROOT || !process.env.ARTIUM_FIXTURE_MANIFEST))) {
     console.error(`${path}: pending`)

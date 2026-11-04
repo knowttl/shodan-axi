@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { createTestTls } from './tls-fixture.mjs'
 
 const hash = value => createHash('sha256').update(value).digest('hex')
 const moduleAt = (root, path) => import(pathToFileURL(join(root, path)).href)
@@ -54,11 +55,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     assert.deepEqual(JSON.parse(await readFile(join(fixtureRoot, 'dist/tools/inventories/shodan-axi.json'), 'utf8')), inventory)
     for (const item of inventory.sources) assert.equal(hash(await readFile(join(manifest.installedPackage, item.path))), item.sha256, item.path)
 
-    const keyFile = join(temporary, 'fake-key.pem')
-    const caFile = join(temporary, 'fake-ca.pem')
-    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyFile, '-out', caFile, '-days', '1',
-      '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost', '-addext', 'basicConstraints=critical,CA:TRUE',
-      '-addext', 'keyUsage=critical,keyCertSign,cRLSign,digitalSignature'], { stdio: 'ignore' })
+    const { keyFile, certFile: caFile } = await createTestTls(temporary, 'DNS:localhost')
     const requests = []
     fake = createServer({ key: await readFile(keyFile), cert: await readFile(caFile) }, (request, response) => {
       const url = new URL(request.url, 'https://localhost')

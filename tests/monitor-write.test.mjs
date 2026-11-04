@@ -97,7 +97,7 @@ for (const [command, operation, credit, maximum] of [
       assert.equal(calls.filter(call => call.method !== 'GET').length, 0)
       const accepted = [...args, ...options, String(maximum)]
       const preview = await run(accepted)
-      assert.equal(preview.body.status, 'preview')
+      assert.equal(preview.body.status, 'preview', `${preview.stdout} ${preview.stderr}`)
       const before = calls.length
       const result = await run([...accepted, '--execute', '--confirm', preview.body.token])
       assert.equal(result.body.status, 'completed')

@@ -5,6 +5,7 @@ import { mkdtemp, readFile, rm, writeFile, chmod, symlink, mkdir } from 'node:fs
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { createTestTls } from './tls-fixture.mjs'
 
 test('packaged account reads use the selected secret and preserve values', async () => {
   const root = await mkdtemp(join(tmpdir(), 'shodan-test-'))
@@ -13,10 +14,7 @@ test('packaged account reads use the selected secret and preserve values', async
   const packageFile = join(root, packageDetails.filename)
   execFileSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', root, packageFile], { stdio: 'ignore' })
   const executable = join(root, 'node_modules', '.bin', 'shodan-axi')
-  const keyFile = join(root, 'key.pem')
-  const certFile = join(root, 'cert.pem')
-  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyFile, '-out', certFile,
-    '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1'], { stdio: 'ignore' })
+  const { keyFile, certFile } = await createTestTls(root, 'IP:127.0.0.1')
   const calls = []
   const accountKey = 'synthetic-"/+= secret'
   let malformed = false

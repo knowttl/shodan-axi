@@ -3,6 +3,7 @@ import { createServer } from 'node:https'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createTestTls } from './tls-fixture.mjs'
 
 export async function withInvestigation(check) {
   const root = await mkdtemp(join(tmpdir(), 'shodan-investigation-'))
@@ -11,9 +12,7 @@ export async function withInvestigation(check) {
     const packed = JSON.parse(execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', root, '--json'], { encoding: 'utf8' }))
     execFileSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', root, join(root, packed[0].filename)], { stdio: 'ignore' })
     const executable = join(root, 'node_modules', '.bin', 'shodan-axi')
-    const keyFile = join(root, 'key.pem'); const certFile = join(root, 'cert.pem')
-    execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', keyFile, '-out', certFile,
-      '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1'], { stdio: 'ignore' })
+    const { keyFile, certFile } = await createTestTls(root, 'IP:127.0.0.1')
     const calls = []
     let mode = 'normal'
     const alerts = new Map([['alert-a', { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null }]])
@@ -164,7 +163,7 @@ export async function withInvestigation(check) {
     const preload = join(root, 'routing.mjs')
     const timerPreload = join(root, 'timers.mjs')
     await writeFile(timerPreload, `if (process.env.TEST_SHORT_REQUEST_TIMEOUT) { const schedule = globalThis.setTimeout; globalThis.setTimeout = (callback, delay, ...args) => schedule(callback, delay === 30000 ? 1000 : delay, ...args) }\n`)
-    await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
+    await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); outgoing.on('error', error => process.stderr.write('Fake transport error: ' + (error.code ?? error.message) + '\\n')); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
     const config = join(root, 'config.json')
     await writeFile(config, JSON.stringify({ version: 1, defaultProfile: 'selected', profiles: { selected: { auth: 'api-key', origin, apiKey: { env: 'TEST_SHODAN_KEY' } } } }), { mode: 0o600 })
     const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload} --import=${timerPreload}`, NODE_EXTRA_CA_CERTS: certFile }
@@ -174,7 +173,10 @@ export async function withInvestigation(check) {
       child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk })
       child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk })
       child.on('error', reject)
-      child.on('close', code => { resolve({ code, stdout, stderr, body: JSON.parse(stdout) }) })
+      child.on('close', code => {
+        const body = JSON.parse(stdout)
+        resolve({ code, stdout, stderr, body })
+      })
     })
     await check({ root, calls, run, setMode: value => { mode = value } })
   } finally {
