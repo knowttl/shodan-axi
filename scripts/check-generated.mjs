@@ -3,11 +3,15 @@ import { operations } from '../dist/catalogue.js'
 import { probes } from '../dist/geonet.js'
 import { mutations } from '../dist/mutation-catalogue.js'
 import { description, nextSteps } from '../dist/discovery.js'
-import { hostedReadOutputs, statsOutput, homeOutput, doctorOutput, alertExportOutput, alertStatsOutput } from '../dist/contracts.js'
+import { hostedReadOutputs, statsOutput, homeOutput, doctorOutput, alertExportOutput, alertStatsOutput, dataListOutput } from '../dist/contracts.js'
 import { z } from 'zod'
 
 const target = new URL('../command-inventory.json', import.meta.url)
 const commands = [
+  { command: 'data list', operation: 'OP-034', effect: 'read', cost: 'none', flags: ['--json', '--output', '--help', '--config', '--profile', '--dataset'], arguments: [], outputSchema: z.toJSONSchema(dataListOutput) },
+  { command: 'data download', operation: 'OP-071', effect: 'read', cost: 'unknown', flags: ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--max-bytes', '--max-requests', '--filename', '--resume', '--restart', '--execute', '--confirm'], arguments: [{ name: 'dataset' }, { name: 'name' }] },
+  { command: 'download', operation: 'CLI-005', effect: 'read', cost: 'query', flags: ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--max-bytes', '--limit', '--filename', '--fields', '--execute', '--confirm'], arguments: [{ name: 'query' }] },
+  { command: 'alert download', operation: 'CLI-020', effect: 'read', cost: 'query', flags: ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--max-bytes', '--limit', '--filename', '--fields', '--alert-id', '--execute', '--confirm'], arguments: [] },
   { command: 'parse', effect: 'local', flags: ['--json', '--output', '--help', '--fields', '--filters', '--filename', '--separator', '--color', '--no-color'], arguments: [{ name: 'file', variadic: true }] },
   { command: 'convert', effect: 'local', flags: ['--json', '--output', '--help', '--fields', '--filename'], arguments: [{ name: 'file' }, { name: 'format' }] },
   { command: 'alert export', operation: 'CLI-021', effect: 'read', cost: 'none', flags: ['--json', '--output', '--help', '--config', '--profile', '--filename', '--max-requests'], arguments: [], outputSchema: z.toJSONSchema(alertExportOutput) },

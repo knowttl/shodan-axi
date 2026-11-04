@@ -136,6 +136,9 @@ export async function withInvestigation(check) {
       }
       const page = url.searchParams.get('page')
       const values = {
+        '/api-info': { query_credits: 20, scan_credits: 98 },
+        '/shodan/data': [{ name: 'raw-daily', description: 'Synthetic daily banners', scope: 'daily' }],
+        '/shodan/data/raw-daily': [{ name: 'synthetic.json', size: 10, sha1: 'd68c19a0a345b7eab78d5e11e991c026ec60db63', timestamp: 1793707200000, url: `https://127.0.0.1:${server.address().port}/fixture?signature=private-signature` }],
         '/shodan/host/192.0.2.7': { ip_str: '192.0.2.7', ports: [443], ...(url.searchParams.get('minify') === 'true' || mode === 'missing-banners' ? {} : { data: mode === 'placeholder' ? [...banners, { ...banner('tcp', '2026-01-04'), placeholder: true }] : banners }) },
         '/shodan/host/count': { total: 2, facets: { [url.searchParams.get('facets')?.split(':')[0] ?? 'port']: [{ value: 443, count: 1 }, { value: 80, count: 1 }] } },
         '/shodan/host/search': { total: mode === 'empty' ? 0 : mode === 'later-page' ? 102 : 2, matches: mode === 'empty' ? [] : mode === 'long' ? [{ ...banners[0], data: 'x'.repeat(600) }] : mode === 'multipage' ? (page === '2' ? banners.slice(1, 2) : banners.slice(0, 1)) : mode === 'later-page' ? (page === '1' ? Array.from({ length: 100 }, () => banners[0]) : page === '2' ? banners.slice(0, 2) : []) : page === '2' ? [] : banners.slice(0, 2) },
@@ -174,6 +177,13 @@ export async function withInvestigation(check) {
           { id: 'alert-a', name: 'First', filters: { ip: ['192.0.2.0/24', '192.0.2.0/25'] }, triggers: { any: { ignore: [{ ip: '192.0.2.9', port: 80 }] } }, notifiers: [{ id: 'n1', provider: 'email', args: { token: 'private-notifier-secret' } }] },
           { id: 'alert-b', name: 'Second', filters: { ip: ['192.0.2.9/32'] }, triggers: {}, notifiers: [] },
         ]
+      }
+      if (mode === 'alert-export-networks') {
+        values['/shodan/alert/info'] = [{ id: 'alert-a', filters: { ip: ['192.0.2.0/24', '198.51.100.0/24'] } }]
+      }
+      if (mode === 'export-truncated') {
+        values['/shodan/host/count'] = { total: 1 }
+        values['/shodan/host/search'] = { total: 1, matches: [banners[2]] }
       }
       if (mode === 'alert-formula-facets') values['/shodan/host/count'] = { total: 1, facets: { domain: [{ value: '=1+2', count: 1 }] } }
       if (mode === 'alert-multiple-facets') values['/shodan/host/count'] = { total: 2, facets: { port: [{ value: 443, count: 2 }, { value: 80, count: 1 }], country: [{ value: 'CA', count: 2 }] } }

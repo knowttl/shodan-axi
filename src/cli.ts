@@ -3,6 +3,9 @@ import { homedir } from 'node:os'
 import { z } from 'zod'
 import { configPath, putProfile, readConfig, secret, select } from './credentials.js'
 import { alertEvidence, validateAlertEvidence } from './alert-evidence.js'
+import { listData, storageOrigins, validateDataList } from './bulk.js'
+import { alertExportDraft, exportDraft, exportSearch } from './bulk-export.js'
+import { transfer, transferDraft } from './bulk-transfer.js'
 import { description, nextSteps } from './discovery.js'
 import { ToolError } from './errors.js'
 import { evidence } from './evidence.js'
@@ -13,7 +16,7 @@ import { readPrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { read } from './vendor.js'
 
-const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, alert export, alert stats, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns, parse, convert'
+const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, download, data list, data download, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, alert export, alert stats, alert download, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns, parse, convert'
 const help: Record<string, string> = {
   '': usage,
   info: 'info [--profile <name>] [--config <absolute-path>] [--json] - inspect plan and credits',
@@ -33,8 +36,8 @@ export async function main(args: string[]): Promise<void> {
     const flags = new Map<string, string | boolean>()
     const words: string[] = []
     const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename', '-f': '--filters' }
-    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force']
-    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers']
+    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force', '--resume', '--restart']
+    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--dataset', '--alert-id']
     for (let index = 0; index < args.length; index++) {
       const input = args[index]
       if (!input) continue
@@ -62,6 +65,37 @@ export async function main(args: string[]): Promise<void> {
     if (readOnly && !/^(?:true|false|1|0)$/i.test(readOnly)) throw new ToolError('CONFIG_INVALID', 'Invalid read-only setting', 'Set SHODAN_AXI_READ_ONLY to true or false')
     const option = (flag: string): string | undefined => { const value = flags.get(flag); return typeof value === 'string' ? value : undefined }
     const command = words.join(' ')
+    if (words[0] === 'alert' && words[1] === 'download') {
+      if (flags.has('--help')) { output({ command: 'alert download', help: 'alert download [--alert-id <id>] --filename <path> --limit <count> --max-bytes <bytes> --max-requests <count> --allow-operation OP-003 --query-credit-budget <credits>; preview first, then repeat with --execute --confirm <token>' }, json); return }
+      const validation = new Map(flags); validation.delete('--alert-id')
+      exportDraft(['download', 'selected-alert-networks'], validation)
+      const selected = await select(configPath(option('--config')), option('--profile'))
+      key = await secret(selected)
+      const draft = await alertExportDraft(words, flags, selected, key)
+      output(clean(await exportSearch(draft, flags, selected, key), key), json); return
+    }
+    if (words[0] === 'download') {
+      if (flags.has('--help')) { output({ command: 'download', help: 'download <query> --filename <path> --limit <count> --max-bytes <bytes> --max-requests <count> --allow-operation OP-003 --query-credit-budget <credits>; preview first, then repeat with --execute --confirm <token>' }, json); return }
+      const draft = exportDraft(words, flags)
+      const selected = await select(configPath(option('--config')), option('--profile'))
+      key = await secret(selected)
+      output(clean(await exportSearch(draft, flags, selected, key), key), json); return
+    }
+    if (words[0] === 'data' && words[1] === 'list') {
+      const dataset = validateDataList(words, flags)
+      if (flags.has('--help')) { output({ command: 'data list', help: 'data list [--dataset <name>]' }, json); return }
+      const selected = await select(configPath(option('--config')), option('--profile'))
+      key = await secret(selected)
+      output(clean(await listData(selected.profile.origin, key, dataset), key), json); return
+    }
+    if (words[0] === 'data' && words[1] === 'download') {
+      if (flags.has('--help')) { output({ command: 'data download', help: 'data download <dataset> <name> --filename <path> --max-bytes <bytes> --max-requests <count> --allow-operation OP-034,OP-035,OP-071 [--resume|--restart]; preview first, then repeat with --execute --confirm <token>' }, json); return }
+      if (storageOrigins.length === 0) throw new ToolError('STORAGE_POLICY_UNAVAILABLE', 'Dataset downloads are disabled pending a reviewed storage-destination policy; host not yet determined', 'Use data list to inspect available datasets')
+      const draft = transferDraft(words, flags)
+      const selected = await select(configPath(option('--config')), option('--profile'))
+      key = await secret(selected)
+      output(clean(await transfer(draft, flags, selected, key), key), json); return
+    }
     if (words[0] === 'parse' || words[0] === 'convert') {
       const result = await evidence(words, flags)
       if (!json && result && typeof result === 'object' && 'display' in result && typeof result.display === 'string') process.stdout.write(`${result.display}\n`)
