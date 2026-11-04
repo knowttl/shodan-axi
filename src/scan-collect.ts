@@ -75,10 +75,13 @@ export async function collectScan(words: string[], flags: Flags, credentials: ()
   }
   const alertFlags: Flags = new Map<string, string | boolean>([['--allow-operation', 'OP-013'], ['--accept-unknown-cost', true], ['--query-credit-budget', '1'], ['--max-requests', '3']])
   let alertId: string | undefined; let cleanup = target ? 'not-created' : 'not-required'; let scan: z.infer<typeof mutation> | undefined; let failure: string | undefined
+  const alertName = `scan-${token}`
   const events: unknown[] = []; let streamResult: z.infer<typeof resultSchema> | undefined
   try {
     if (target && 'targets' in context) {
-      const created = await executeMutation(await draftMutation(['alert', 'create', `scan-${token}`, context.targets.join(',')], alertFlags), alertFlags)
+      const alertDraft = await draftMutation(['alert', 'create', alertName, context.targets.join(',')], alertFlags)
+      cleanup = 'unknown'
+      const created = await executeMutation(alertDraft, alertFlags)
       alertId = created.steps?.[0]?.id
       if (!alertId || created.status !== 'completed') throw new Error('alert creation could not be verified')
     }
@@ -109,5 +112,5 @@ export async function collectScan(words: string[], flags: Flags, credentials: ()
   if (filename) {
     try { saved = await save(filename, gzipSync(Buffer.from(collected.events.map(event => `${JSON.stringify(event)}\n`).join('')))) } catch { failure = 'STORAGE_ERROR' }
   }
-  return { status: failure || cleanup === 'failed' ? 'partial' : 'completed', ...(failure ? { error: failure } : {}), ...(scan?.scanId ? { scanId: scan.scanId } : {}), vendorCompletion: 'unknown', vendorCancellation: 'not-requested', ...collected, ...(streamResult ? { stream: streamResult } : {}), cleanup, ...(cleanup === 'failed' && alertId ? { cleanupAlertId: alertId } : {}), ...(saved ? { saved } : {}), attribution: 'Matching stream records are not proof of scan ownership' }
+  return { status: failure || cleanup === 'failed' ? 'partial' : 'completed', ...(failure ? { error: failure } : {}), ...(scan?.scanId ? { scanId: scan.scanId } : {}), vendorCompletion: 'unknown', vendorCancellation: 'not-requested', ...collected, ...(streamResult ? { stream: streamResult } : {}), cleanup, ...(cleanup === 'unknown' ? { reconciliation: { alertName, help: 'Run alert list, locate this exact name and inspect its targets; preview and confirm alert remove <id> for any matching temporary alert before retrying' } } : {}), ...(cleanup === 'failed' && alertId ? { cleanupAlertId: alertId } : {}), ...(saved ? { saved } : {}), attribution: 'Matching stream records are not proof of scan ownership' }
 }

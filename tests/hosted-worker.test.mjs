@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
+import { readFile, writeFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { withInvestigation } from './investigation-fixture.mjs'
 
 const limits = { limit: 2, maxBytes: 10000, timeout: 5000, idleTimeout: 3000 }
 const args = ['stream', '--allow-operation', 'OP-046', '--accept-unknown-cost', '--limit', '2', '--max-bytes', '10000', '--timeout', '5000', '--idle-timeout', '3000']
-const start = confirmation => ({ version: 1, type: 'start', requestId: 'start-1', operation: 'OP-046', selector: null, bounds: limits, confirmation })
+const admission = 'synthetic-host-admission-binding-01'
+const start = confirmation => ({ version: 1, type: 'start', requestId: 'start-1', admission, operation: 'OP-046', selector: null, bounds: limits, confirmation })
 
 test('private worker frames admitted events, loss and a terminal summary', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, launchWorker, calls, setMode }) => {
+  await withInvestigation(async ({ runHosted: run, launchWorker, calls, hostProfile, setMode }) => {
     setMode('stream-json')
     const preview = await run(args)
     const worker = launchWorker(); worker.send(start(preview.body.token))
@@ -19,12 +21,90 @@ test('private worker frames admitted events, loss and a terminal summary', { tim
     assert.equal(closed.type, 'closed'); assert.equal(closed.stopReason, 'max-events'); assert.equal(closed.count, 2)
     assert.deepEqual(closed.bounds, limits)
     assert.equal(await worker.closed, 0)
+    assert.deepEqual((await readFile(worker.readsPath, 'utf8')).trim().split('\n').map(line => JSON.parse(line)), [hostProfile])
     assert.equal(calls.filter(call => call.path === '/shodan/banners').length, 1)
   })
 })
 
+test('direct launch with ambient credentials refuses start before reading credentials or connecting', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, launchWorker, calls, config, setMode }) => {
+    setMode('stream-json')
+    const preview = await run(args)
+    const worker = launchWorker({ admitted: false, overrides: { SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', SHODAN_AXI_API_KEY: 'developer-secret' } })
+    worker.send(start(preview.body.token))
+    assert.equal((await worker.next()).error, 'ADMISSION_REQUIRED')
+    assert.equal(await worker.closed, 0)
+    await assert.rejects(readFile(worker.readsPath), { code: 'ENOENT' })
+    assert.equal(calls.length, 0)
+  })
+})
+
+for (const binding of [undefined, 'incorrect-host-admission-binding-01']) {
+  test(`worker rejects start with ${binding ? 'incorrect' : 'missing'} admission binding`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ runHosted: run, launchWorker, calls }) => {
+      const preview = await run(args)
+      const worker = launchWorker()
+      worker.send({ ...start(preview.body.token), admission: binding })
+      assert.equal((await worker.next()).stopReason, 'protocol-error')
+      assert.equal(await worker.closed, 0)
+      await assert.rejects(readFile(worker.readsPath), { code: 'ENOENT' })
+      assert.equal(calls.length, 0)
+    })
+  })
+
+  test(`worker rejects extension with ${binding ? 'incorrect' : 'missing'} admission binding`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ runHosted: run, launchWorker, calls, setMode }) => {
+      setMode('stream-wait')
+      const preview = await run(args)
+      const worker = launchWorker(); worker.send(start(preview.body.token))
+      assert.equal((await worker.next()).type, 'ready')
+      assert.equal((await worker.next()).type, 'event')
+      worker.send({ version: 1, type: 'extend', requestId: 'extend-1', admission: binding, deadlineMs: Date.now() + 6000 })
+      const closed = await worker.next()
+      assert.equal(closed.type, 'closed'); assert.equal(closed.stopReason, 'protocol-error')
+      assert.equal(await worker.closed, 0)
+      assert.equal(calls.length, 1)
+    })
+  })
+}
+
+test('worker refuses a developer profile even after a handshake', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, launchWorker, calls, config }) => {
+    const preview = await run(args)
+    const worker = launchWorker({ profilePath: config, overrides: { TEST_SHODAN_KEY: 'fake-secret' } })
+    worker.send(start(preview.body.token))
+    assert.equal((await worker.next()).error, 'ADMISSION_REQUIRED')
+    assert.equal(await worker.closed, 0)
+    assert.equal(calls.length, 0)
+  })
+})
+
+test('admitted worker ignores ambient credential and origin overrides', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ runHosted: run, launchWorker, calls, setMode }) => {
+    setMode('stream-json')
+    const preview = await run(args)
+    const worker = launchWorker({ overrides: { SHODAN_AXI_PROFILE: 'developer', SHODAN_AXI_CONFIG: '/unreadable/config.json', SHODAN_AXI_API_KEY: 'developer-secret', SHODAN_AXI_STREAM_ORIGIN: 'https://invalid.example' } })
+    worker.send(start(preview.body.token))
+    assert.equal((await worker.next()).type, 'ready')
+    await worker.closed
+    assert.equal(calls.length, 1)
+    assert.equal(calls[0].query.key, 'fake-secret')
+  })
+})
+
+test('worker refuses ambient SecretRefs in a host profile', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ hostProfile, launchWorker, calls }) => {
+    await writeFile(hostProfile, JSON.stringify({ version: 1, defaultProfile: 'artium', profiles: { artium: { auth: 'api-key', apiKey: { env: 'SHODAN_AXI_API_KEY' } } } }))
+    const worker = launchWorker({ overrides: { SHODAN_AXI_API_KEY: 'developer-secret' } })
+    worker.send(start('00000000-0000-4000-8000-000000000001'))
+    assert.equal((await worker.next()).error, 'ADMISSION_REQUIRED')
+    assert.equal(await worker.closed, 0)
+    assert.equal(calls.length, 0)
+  })
+})
+
 test('hosted banner output closes its schema and redacts credential patterns', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, launchWorker, setMode }) => {
+  await withInvestigation(async ({ runHosted: run, launchWorker, setMode }) => {
     setMode('stream-secrets')
     const preview = await run(args)
     const worker = launchWorker(); worker.send(start(preview.body.token))
@@ -37,7 +117,7 @@ test('hosted banner output closes its schema and redacts credential patterns', {
 })
 
 test('hosted provisional threat events redact sensitive keys and values', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, launchWorker, setMode }) => {
+  await withInvestigation(async ({ runHosted: run, launchWorker, setMode }) => {
     setMode('stream-secrets')
     const threatArgs = ['threatnet', 'events', ...args.slice(1).map(value => value === 'OP-046' ? 'OP-067' : value)]
     const preview = await run(threatArgs)
@@ -50,14 +130,14 @@ test('hosted provisional threat events redact sensitive keys and values', { time
 })
 
 test('private worker acknowledges extension and stops without reconnecting', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, launchWorker, calls, setMode }) => {
+  await withInvestigation(async ({ runHosted: run, launchWorker, calls, setMode }) => {
     setMode('stream-wait')
     const preview = await run(args)
     const worker = launchWorker(); worker.send(start(preview.body.token))
     assert.equal((await worker.next()).type, 'ready')
     assert.equal((await worker.next()).type, 'event')
     const deadlineMs = Date.now() + 6000
-    worker.send({ version: 1, type: 'extend', requestId: 'extend-1', deadlineMs })
+    worker.send({ version: 1, type: 'extend', requestId: 'extend-1', admission, deadlineMs })
     assert.deepEqual(await worker.next(), { version: 1, type: 'extended', requestId: 'extend-1', deadlineMs })
     worker.send({ version: 1, type: 'stop', requestId: 'stop-1' })
     const closed = await worker.next()
@@ -79,7 +159,7 @@ test('private worker refuses an unconfirmed start before connecting', { timeout:
 })
 
 test('duplicate protocol request IDs terminate without opening a stream', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, launchWorker, calls, setMode }) => {
+  await withInvestigation(async ({ runHosted: run, launchWorker, calls, setMode }) => {
     setMode('stream-json')
     const preview = await run(args)
     const worker = launchWorker(); const request = start(preview.body.token)
@@ -92,7 +172,7 @@ test('duplicate protocol request IDs terminate without opening a stream', { time
 })
 
 test('stop during admission does not open a stream', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, launchWorker, calls, setMode }) => {
+  await withInvestigation(async ({ runHosted: run, launchWorker, calls, setMode }) => {
     setMode('stream-json')
     const preview = await run(args)
     const worker = launchWorker(); worker.send(start(preview.body.token)); worker.send({ version: 1, type: 'stop', requestId: 'stop-early' })

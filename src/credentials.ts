@@ -29,9 +29,9 @@ export function configPath(option?: string): string {
   return path
 }
 
-export async function readConfig(path: string): Promise<Envelope> {
+export async function readConfig(path: string, privateFile = false): Promise<Envelope> {
   let content: string
-  try { content = await readPrivate(path, false) } catch (error) {
+  try { content = await readPrivate(path, privateFile) } catch (error) {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return { version: 1, profiles: {} }
     throw error
   }

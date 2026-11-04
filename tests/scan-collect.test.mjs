@@ -7,6 +7,25 @@ import { withInvestigation } from './investigation-fixture.mjs'
 
 const args = ['scan', 'submit', '192.0.2.7/32', '--allow-operation', 'OP-009,OP-013,OP-015,OP-053', '--accept-unknown-cost', '--scan-credit-budget', '2', '--query-credit-budget', '8', '--max-requests', '10', '--wait', '4', '--limit', '10', '--max-bytes', '10000', '--idle-timeout', '3000']
 
+test('lost temporary alert creation returns uncertain cleanup and a name to reconcile', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, calls, setMode }) => {
+    setMode('lost-create-alert')
+    const preview = await run(args)
+    const result = await run([...args, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.status, 'partial')
+    assert.equal(result.body.error, 'OUTCOME_UNKNOWN')
+    assert.equal(result.body.cleanup, 'unknown')
+    assert.equal(result.body.reconciliation.alertName, `scan-${preview.body.token}`)
+    assert.match(result.body.reconciliation.help, /alert list/)
+    assert.match(result.body.reconciliation.help, /alert remove <id>/)
+    assert.equal(calls.filter(call => call.method === 'POST' && call.path === '/shodan/alert').length, 1)
+    assert.equal(calls.some(call => call.path === '/shodan/scan'), false)
+    assert.equal(calls.some(call => call.method === 'DELETE'), false)
+    const alerts = await run(['alert', 'list'])
+    assert.ok(alerts.stdout.includes(result.body.reconciliation.alertName))
+  })
+})
+
 for (const mode of ['scan-collect', 'scan-collect-cleanup-failed']) test(`targeted scan collection preserves results: ${mode}`, { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, calls, setMode }) => {
     setMode(mode)

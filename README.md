@@ -110,6 +110,14 @@ Provider mutation encoding and live readback contracts remain unverified.
 
 For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B5.2 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
+The Artium companion owns session admission, authorization and revision rechecks, quotas, replay accounting, revocation and private-directory cleanup; this package owns the worker protocol.
+The companion must launch the worker with a private inherited duplex fd 3 and send the first JSONL frame as `{ "version": 1, "type": "admit", "requestId": "<unique>", "admission": "<session-random-binding>", "profilePath": "<private-absolute-path>" }`.
+The binding must contain 32 to 128 characters and appear as `admission` on every `start` and `extend` frame after the host has authorized that operation; duplicate admission, missing admission and mismatched bindings terminate the worker.
+The profile must be private, contain exactly the default profile `artium`, and use an API key SecretRef named `ARTIUM_SECRET_<n>`; the worker reads only this profile and never selects ambient credentials or origin overrides.
+The host must provide only its selected secret and trusted runtime settings, isolate the inherited channel from callers, and create the confirmation plan using that same private profile and selected secret before sending `start`.
+The channel is a trusted host-to-child boundary, not a public authorization endpoint or proof of host identity against another process with the same OS privileges.
+Existing Artium launchers must add this handshake and admission fields before using this worker; the pinned real-host conformance check must pass with that companion change before delivery.
+If temporary alert creation loses its response, scan collection reports `cleanup: unknown` and a generated `reconciliation.alertName`; use `alert list` to find and inspect that exact name, then preview and confirm removal by ID before retrying.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.
 Native Windows platform verification remains pending until run on Windows.
