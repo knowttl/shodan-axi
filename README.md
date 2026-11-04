@@ -1,7 +1,7 @@
 # shodan-axi
 
-An agent-facing CLI for Shodan investigation, alerts, notifiers and organization membership.
-It supports SecretRef-based profiles, host and DNS inspection, search, counts, bounded statistics, historical and shared intelligence reads, and alert, notifier and organization membership management.
+An agent-facing CLI for Shodan investigation, scans, alerts, notifiers and organization membership.
+It supports SecretRef-based profiles, host and DNS inspection, search, counts, bounded statistics, historical and shared intelligence reads, scan submission and job inspection, and alert, notifier and organization membership management.
 
 ```sh
 shodan-axi profile set default --env SHODAN_AXI_API_KEY
@@ -30,13 +30,13 @@ Use `scan protocols`, `scan list` and `scan status <id>` to inspect scan capabil
 The status command can poll with `--poll-attempts`, `--poll-interval-ms` and an explicit `--max-requests` bound.
 Scan list pagination is undocumented, so the response indicates whether the returned scope is complete without inventing a page parameter.
 Native `scan submit <targets>` requires OP-009, a scan-credit budget sufficient for the conservative expanded target count and a request bound.
+Targets are comma-separated IPv4 or IPv6 addresses or CIDR networks; `--force` requests a forced scan and is bound to the preview.
 Overlapping targets count separately for the credit estimate.
 `scan internet <port> <protocol>` requires OP-010, a scan-credit budget, a request bound and acceptance of unknown cost; the budget cannot bound a provider cost that is unknown.
 Both commands preview their active effects and require exact confirmation before one submission; a returned scan ID does not mean that the job has finished.
 Stream collection, vendor cancellation and saved scan results are not provided by these commands.
-`org info` omits provider-issued credentials and other private fields from its output.
-An add notifies the member unless `--silent` is supplied; a removal preview reports the downgrade effect.
-Writes require an exact operation grant, unknown-cost acceptance and request and credit bounds.
+An organization membership add notifies the member unless `--silent` is supplied; a removal preview reports the downgrade effect.
+Writes require an exact operation grant and request and credit bounds; unknown-cost writes also require `--accept-unknown-cost`.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
 For example, preview a removal with `shodan-axi alert remove <id> --allow-operation OP-015 --accept-unknown-cost --query-credit-budget 1 --max-requests 3`.
 Set `SHODAN_AXI_READ_ONLY=true` to refuse execution before credential retrieval; previews remain available.
@@ -44,13 +44,15 @@ Plans bind the selected profile, credential, input, effects and observed state; 
 Confirmation tokens expire after 15 minutes and are consumed before dispatch.
 Plans and the default `writes.log` journal live under `shodan-axi` in the absolute `XDG_STATE_HOME` directory, falling back to `~/.local/state`; Windows uses absolute `LOCALAPPDATA`, falling back to `~/AppData/Local`.
 `SHODAN_AXI_WRITE_LOG` selects a private absolute journal path instead.
-Execution lists every step as `verified`, `acknowledged-unverified`, `failed`, or `not-attempted`.
-Definitively acknowledged mutations without a readback contract are journaled as `acknowledged-unverified` and allow ordered execution to continue; failed or ambiguous writes and failed or contradictory readbacks stop subsequent steps.
+Scan execution returns `submitted` with a scan ID and unknown completion, or `OUTCOME_UNKNOWN` when the submission cannot be confirmed.
+Other write execution lists every step as `verified`, `acknowledged-unverified`, `failed`, or `not-attempted`.
+For those writes, definitively acknowledged mutations without a readback contract are journaled as `acknowledged-unverified` and allow ordered execution to continue; failed or ambiguous writes and failed or contradictory readbacks stop subsequent steps.
 Notifier creation and updates use a private absolute `--body-file` containing JSON with an `args` object; creation also requires a provider.
 `alert clear` previews a fixed snapshot of alerts to remove.
 `alert domain <domain>` creates an alert from indexed IPv4 addresses on the first DNS page, reports whether more results exist, and does not track future DNS changes; use `--triggers` to override its default trigger bundle.
 `alert import <absolute-path>` accepts a private JSON array or JSONL file, optionally gzip-compressed, and previews ordered notifier creation, alert creation, trigger, ignore and notifier attachment steps.
-See [the generated command inventory](command-inventory.json) for command arguments, flags and operation grants.
+See [the generated command inventory](command-inventory.json) for command arguments, flags, operation grants and public output schemas for free reads.
+Those reads omit unknown vendor fields, including provider-issued credential fields, in both hosted and native output.
 Native commands contact the configured Shodan origin; offline verification uses controlled fakes, and live mutations require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
