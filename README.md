@@ -25,9 +25,12 @@ Trends and Exploits access and redirect behavior remain unverified against live 
 For native Trends exports, choose `--save` for a query-derived filename or `--filename <path>` for an explicit destination.
 Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
 Alert and notifier reads and writes are available through the native CLI.
-`parse <file>...` filters local JSON or gzip-compressed JSONL with repeated `--filters`, projects dotted `--fields`, and supports a custom `--separator`.
-`convert <file> <format>` produces CSV, KML, GeoJSON (`geo.json`), XLSX or extracted JPEG images without credentials or network access.
-Inputs are bounded to 1 MiB compressed and 10 MiB decompressed; outputs use private paths and existing conversion outputs are not overwritten.
+`parse <file>...` filters local JSON or JSONL, optionally gzip-compressed, with repeated `--filters <field:value>`, projects dotted `--fields`, and supports a custom `--separator`.
+Every filter must match; `net:<CIDR>` matches `ip_str`, strings use substring matching, and numbers, booleans and array elements use exact matching.
+With `--filename <path>`, parsing requires a filter and appends matching full records, rather than projected fields, to gzip JSONL with a `.json.gz` suffix.
+`convert <file> <format>` produces CSV (`csv`), KML (`kml`), GeoJSON (`geo.json`), XLSX (`xlsx`) or extracted JPEG images (`images`).
+Both local commands run without credentials or network access.
+Each input file is bounded to 1 MiB on disk, including uncompressed files, and gzip input is bounded to 10 MiB decompressed; outputs use private paths and existing conversion outputs are not overwritten.
 `alert export` saves secret-free alert configuration as gzip JSONL.
 `alert stats` uses free count-facet reads, normalizes overlapping networks and labels top-facet results partial.
 Partial statistics saved to a file use a `.partial` suffix.
@@ -68,7 +71,7 @@ Notifier creation and updates use a private absolute `--body-file` containing JS
 `alert import <absolute-path>` accepts a private JSON array or JSONL file, optionally gzip-compressed, and previews ordered notifier creation, alert creation, trigger, ignore and notifier attachment steps.
 See [the generated command inventory](command-inventory.json) for command arguments, flags, operation grants and public output schemas for free reads.
 Those reads omit unknown vendor fields, including provider-issued credential fields, in both hosted and native output.
-GeoNet contacts `https://geonet.shodan.io` independently of profile configuration; other native commands use the configured Shodan origin or their service-specific endpoints.
+GeoNet contacts `https://geonet.shodan.io` independently of profile configuration; other native network commands use the configured Shodan origin or their service-specific endpoints.
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
