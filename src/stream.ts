@@ -109,7 +109,7 @@ async function readStream(draft: StreamDraft, origin: string, key: string): Prom
   process.once('SIGINT', cancelled); process.once('SIGTERM', cancelled)
   const req = request(url, { method: 'GET' })
   try {
-    response = await new Promise<IncomingMessage>((resolve, reject) => { req.once('response', resolve); req.once('error', reject); req.end() })
+    response = await new Promise<IncomingMessage>((resolve, reject) => { req.once('response', resolve); req.once('error', reject); resetIdle(); req.end() })
     if (response.statusCode !== 200) throw new ToolError(response.statusCode === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR', `Stream request failed with HTTP ${response.statusCode ?? 0}`, 'Check access and retry later')
     const sse = String(response.headers['content-type'] ?? '').toLowerCase().startsWith('text/event-stream')
     const accept = async (text: string): Promise<void> => {

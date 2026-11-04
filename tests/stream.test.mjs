@@ -101,13 +101,22 @@ test('follow rejects a symlinked output directory before connecting', { timeout:
 })
 
 test('idle streams stop at the selected idle timeout', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ run, setMode }) => {
-    setMode('stream-idle')
-    const args = ['stream', ...options('OP-046').map(value => value === '3000' ? '500' : value)]
-    const preview = await run(args)
-    const result = await run([...args, '--execute', '--confirm', preview.body.token])
-    assert.equal(result.body.stopReason, 'idle-timeout', result.stdout)
-    assert.equal(result.body.count, 0)
+  await withInvestigation(async ({ root, run, setMode }) => {
+    for (const mode of ['stream-idle', 'stream-no-headers']) {
+      setMode(mode)
+      for (const [command, operation] of [[['stream'], 'OP-046'], [['threatnet', 'events'], 'OP-067']]) {
+        for (const follow of [false, true]) {
+          const args = [...command, ...options(operation).map(value => value === '3000' ? '500' : value)]
+          if (follow) args.push('--follow', '--datadir', join(root, `${mode}-${operation}`), '--max-file-bytes', '1000', '--retain', '1')
+          const preview = await run(args)
+          const result = await run([...args, '--execute', '--confirm', preview.body.token])
+          assert.equal(result.code, 0, result.stdout)
+          assert.equal(result.body.stopReason, 'idle-timeout', result.stdout)
+          assert.equal(result.body.count, 0)
+          assert.equal(result.body.bytes, mode === 'stream-idle' ? 1 : 0)
+        }
+      }
+    }
   })
 })
 
