@@ -20,6 +20,9 @@ for (const mode of ['scan-collect', 'scan-collect-cleanup-failed']) test(`target
     if (mode !== 'scan-collect') assert.equal(result.body.cleanupAlertId, 'alert-new')
     assert.deepEqual(result.body.events.map(event => event._shodan.id), ['banner-a', 'banner-b'])
     assert.equal(result.body.duplicates, 1); assert.equal(result.body.outOfScope, 1)
+    const { bytes: consumedBytes, ...summary } = result.body.stream
+    assert.deepEqual(summary, { operation: 'OP-053', limit: 10, maxBytes: 10000, timeout: 4000, idleTimeout: 3000, count: 4, upstreamConnections: 1, stopReason: 'upstream-eof', debugDiscarded: 0, partialRecordCount: 0 })
+    assert.ok(Number.isSafeInteger(consumedBytes) && consumedBytes > 0 && consumedBytes <= 10000)
     const bytes = await readFile(filename)
     assert.equal(bytes.readUInt32LE(4), 0)
     assert.deepEqual(gunzipSync(bytes).toString().trim().split('\n').map(line => JSON.parse(line)), result.body.events)
@@ -49,6 +52,9 @@ test('internet collection selects the requested port and never claims ownership'
     const result = await run([...command, '--execute', '--confirm', preview.body.token])
     assert.equal(result.body.scanId, 'scan-internet')
     assert.deepEqual(result.body.events.map(event => event._shodan.id), ['banner-a'])
+    const { bytes: consumedBytes, ...summary } = result.body.stream
+    assert.deepEqual(summary, { operation: 'OP-049', limit: 10, maxBytes: 10000, timeout: 4000, idleTimeout: 3000, count: 4, upstreamConnections: 1, stopReason: 'upstream-eof', debugDiscarded: 0, partialRecordCount: 0 })
+    assert.ok(Number.isSafeInteger(consumedBytes) && consumedBytes > 0 && consumedBytes <= 10000)
     assert.match(result.body.attribution, /not proof/)
     assert.equal(calls.filter(call => call.path === '/shodan/ports/443').length, 1)
   })

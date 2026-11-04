@@ -23,7 +23,7 @@ const digest = (value: string): string => createHash('sha256').update(value).dig
 const plan = z.object({ token: z.string().uuid(), binding: z.string(), created: z.number(), mac: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 const preview = z.object({ status: z.literal('preview'), token: z.string().uuid() })
 const mutation = z.object({ status: z.string(), scanId: z.string().optional(), steps: z.array(z.object({ id: z.string().optional(), status: z.string() })).optional() })
-const resultSchema = z.object({ stopReason: z.string(), error: z.string().optional(), debugDiscarded: z.number().int(), partialRecordCount: z.number().int() })
+const resultSchema = z.object({ operation: z.string(), limit: z.number().int(), maxBytes: z.number().int(), timeout: z.number().int(), idleTimeout: z.number().int(), count: z.number().int(), bytes: z.number().int(), upstreamConnections: z.number().int(), stopReason: z.string(), error: z.string().optional(), message: z.string().optional(), help: z.string().optional(), debugDiscarded: z.number().int(), partialRecordCount: z.number().int() })
 
 export async function collectScan(words: string[], flags: Flags, credentials: () => Promise<{ selection: Selection; key: string }>): Promise<unknown> {
   const allowed = ['--json', '--output', '--config', '--profile', '--allow-operation', '--accept-unknown-cost', '--scan-credit-budget', '--query-credit-budget', '--max-requests', '--force', '--wait', '--limit', '--max-bytes', '--idle-timeout', '--filename', '--quiet', '--execute', '--confirm']
