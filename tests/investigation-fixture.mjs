@@ -213,6 +213,13 @@ export async function withInvestigation(check) {
           { id: 'alert-b', name: 'Second', filters: { ip: ['192.0.2.9/32'] }, triggers: {}, notifiers: [] },
         ]
       }
+      if (mode === 'alert-expiration') {
+        values['/shodan/alert/info'] = [
+          { id: 'old', name: 'Old', filters: { ip: ['192.0.2.0/24'] }, expiration: '2000-01-01T00:00:00Z' },
+          { id: 'current', name: 'Current', filters: { ip: ['192.0.2.0/24'] }, expiration: '2099-01-01T00:00:00Z' },
+          { id: 'permanent', name: 'Permanent', filters: { ip: ['192.0.2.0/24'] }, expiration: null },
+        ]
+      }
       if (mode === 'alert-export-networks') {
         values['/shodan/alert/info'] = [{ id: 'alert-a', filters: { ip: ['192.0.2.0/24', '198.51.100.0/24'] } }]
       }

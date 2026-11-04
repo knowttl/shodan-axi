@@ -21,6 +21,62 @@ const selections = [
 ]
 const options = operation => ['--allow-operation', operation, '--accept-unknown-cost', '--limit', '2', '--max-bytes', '10000', '--timeout', '5000', '--idle-timeout', '3000']
 
+test('streamer override directs callers to trusted profile configuration', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, calls }) => {
+    const result = await run(['stream', '--streamer', 'https://example.test'])
+    assert.equal(result.body.error, 'INVALID_INPUT')
+    assert.match(result.body.help, /trusted streamOrigin/)
+    assert.equal(calls.length, 0)
+  })
+})
+
+test('stream projects selected fields from complete events', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, setMode }) => {
+    setMode('stream-json')
+    const args = ['stream', ...options('OP-046'), '--fields', 'ip_str,port']
+    const preview = await run(args)
+    const result = await run([...args, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.count, 2)
+    assert.deepEqual(result.body.events, [{ ip_str: '192.0.2.7', port: 443 }, { ip_str: '192.0.2.8', port: 443 }])
+  })
+})
+
+test('quiet stream retains accounting without printing events', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, setMode }) => {
+    setMode('stream-json')
+    const args = ['stream', ...options('OP-046'), '--quiet']
+    const preview = await run(args)
+    const result = await run([...args, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.count, 2)
+    assert.deepEqual(result.body.events, [])
+  })
+})
+
+test('stream formats selected fields with the requested separator and color', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, runInteractive, setMode }) => {
+    setMode('stream-json')
+    const args = ['stream', ...options('OP-046'), '--fields', 'ip_str,port', '--separator', '|', '--color']
+    const preview = await run(args)
+    const result = await run([...args, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.display, '\u001b[36m192.0.2.7|443\u001b[0m\n\u001b[36m192.0.2.8|443\u001b[0m')
+    const next = await run(args)
+    const terminal = await runInteractive([...args, '--execute', '--confirm', next.body.token])
+    assert.match(terminal.stdout, /\u001b\[36m192\.0\.2\.7\|443\u001b\[0m/)
+    assert.match(terminal.stdout, /stopReason: max-events/)
+  })
+})
+
+test('stream confirmation binds the requested field selection', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, calls, setMode }) => {
+    setMode('stream-json')
+    const args = ['stream', ...options('OP-046'), '--fields', 'ip_str']
+    const preview = await run(args)
+    const result = await run([...args.slice(0, -1), 'port', '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.error, 'PLAN_STALE')
+    assert.equal(calls.length, 0)
+  })
+})
+
 test('every stream execution exit reports its approved bounds and progress', { timeout: 60000 }, async () => {
   await withInvestigation(async ({ root, run, setMode }) => {
     const cases = [

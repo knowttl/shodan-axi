@@ -64,6 +64,11 @@
         "--max-file-bytes",
         "--retain",
         "--compresslevel",
+        "--fields",
+        "--separator",
+        "--color",
+        "--no-color",
+        "--quiet",
         "--asn",
         "--countries",
         "--ports",
@@ -158,6 +163,9 @@
     {
       "command": "data list",
       "operation": "OP-034",
+      "selectors": [
+        "OP-035"
+      ],
       "effect": "read",
       "cost": "none",
       "flags": [
@@ -251,6 +259,7 @@
         "--max-bytes",
         "--max-requests",
         "--filename",
+        "--chunksize",
         "--resume",
         "--restart",
         "--execute",
@@ -4664,7 +4673,8 @@
         "--accept-unknown-cost",
         "--execute",
         "--confirm",
-        "--force"
+        "--force",
+        "--verbose"
       ],
       "arguments": [
         {
@@ -5385,6 +5395,38 @@
         "--config",
         "--env",
         "--file"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "setup",
+      "effect": "local",
+      "flags": [
+        "--json",
+        "--output",
+        "--help"
+      ],
+      "arguments": [
+        {
+          "name": "target"
+        }
+      ]
+    },
+    {
+      "command": "skill",
+      "effect": "local",
+      "flags": [
+        "--json",
+        "--output",
+        "--help"
+      ],
+      "arguments": []
+    },
+    {
+      "command": "version",
+      "effect": "local",
+      "flags": [
+        "--help"
       ],
       "arguments": []
     }

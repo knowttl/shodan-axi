@@ -14,9 +14,16 @@ test('dataset listings omit signed URLs', { timeout: 30000 }, async () => {
   })
 })
 
+test('inventory identifies dataset and file listing operations', async () => {
+  const inventory = JSON.parse(await readFile(new URL('../command-inventory.json', import.meta.url), 'utf8'))
+  const listing = inventory.commands.find(command => command.command === 'data list')
+  assert.equal(listing.operation, 'OP-034')
+  assert.deepEqual(listing.selectors, ['OP-035'])
+})
+
 test('dataset transfer refuses before credential and metadata access with empty policy', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, calls }) => {
-    for (const flags of [[], ['--execute', '--confirm', '00000000-0000-4000-8000-000000000001'], ['--resume'], ['--restart']]) {
+    for (const flags of [[], ['--execute', '--confirm', '00000000-0000-4000-8000-000000000001'], ['--resume'], ['--restart'], ['--chunksize', '4']]) {
       const result = await run(['data', 'download', 'raw-daily', 'synthetic.json', ...flags], { SHODAN_AXI_CONFIG: join(root, 'missing') })
       assert.equal(result.body.error, 'STORAGE_POLICY_UNAVAILABLE')
       assert.match(result.body.message, /host not yet determined/)

@@ -14,7 +14,7 @@ for (let index = 0; index < args.length; index++) {
 }
 const paths = typeof options.get('--paths') === 'string' ? options.get('--paths').split(',') : []
 const id = options.get('--id')
-if (!['B1.1', 'B2.1', 'B2.2', 'B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(id) || !options.has('--offline') || !paths.length || new Set(paths).size !== paths.length || paths.some(path => !['native', 'artium'].includes(path))) {
+if (!['B1.1', 'B2.1', 'B2.2', 'B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2', 'B6.1'].includes(id) || !options.has('--offline') || !paths.length || new Set(paths).size !== paths.length || paths.some(path => !['native', 'artium'].includes(path))) {
   console.error('Select a supported slice, --offline and at least one valid path')
   process.exit(2)
 }
@@ -24,38 +24,40 @@ let failed = types.status === 0 ? 0 : 1
 let pending = 0
 for (const path of paths) {
   const tests = []
+  const dependencyId = id === 'B6.1' && options.has('--with-dependencies') ? 'B5.2' : id
+  if (id === 'B6.1' && path === 'native') tests.push('tests/setup.test.mjs')
   if (id === 'B1.1' || options.has('--with-dependencies')) tests.push(...(path === 'native'
-    ? ['tests/account.test.mjs', 'tests/credentials.test.mjs', 'tests/private-file.test.mjs', 'tests/interruption.test.mjs'] : ['tests/artium.test.mjs']))
-  if (id === 'B2.1' || (['B2.2', 'B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+    ? ['tests/account.test.mjs', 'tests/credentials.test.mjs', 'tests/private-file.test.mjs', 'tests/interruption.test.mjs', 'tests/hosted-reads.test.mjs'] : ['tests/artium.test.mjs']))
+  if (id === 'B2.1' || (['B2.2', 'B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     const test = path === 'native' ? 'tests/investigation.test.mjs' : 'tests/artium.test.mjs'
     if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B2.2' || (['B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B2.2' || (['B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     const test = path === 'native' ? 'tests/history.test.mjs' : 'tests/artium.test.mjs'
     if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B3.1' || (['B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B3.1' || (['B3.2', 'B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/monitor-read.test.mjs', 'tests/monitor-write.test.mjs', 'tests/tls.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B3.2' || (['B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B3.2' || (['B3.3', 'B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/organization.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B3.3' || (['B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B3.3' || (['B3.4', 'B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/scan.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B3.4' || (['B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B3.4' || (['B4.1', 'B4.2', 'B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/geonet.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B4.1' || (['B4.2', 'B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B4.1' || (['B4.2', 'B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/evidence.test.mjs', 'tests/alert-evidence.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B4.2' || (['B5.1', 'B5.2'].includes(id) && options.has('--with-dependencies'))) {
+  if (id === 'B4.2' || (['B5.1', 'B5.2'].includes(dependencyId) && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/bulk.test.mjs', 'tests/bulk-transfer.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B5.1' || (id === 'B5.2' && options.has('--with-dependencies'))) {
+  if (id === 'B5.1' || (dependencyId === 'B5.2' && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/stream.test.mjs'] : ['tests/artium.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
-  if (id === 'B5.2') {
+  if (id === 'B5.2' || (id === 'B6.1' && options.has('--with-dependencies'))) {
     for (const test of path === 'native' ? ['tests/radar.test.mjs', 'tests/hosted-worker.test.mjs', 'tests/scan-collect.test.mjs'] : ['tests/artium-b5-2.test.mjs']) if (!tests.includes(test)) tests.push(test)
   }
   if (!tests.length || tests.some(file => !existsSync(file)) || (path === 'artium' && (!process.env.ARTIUM_FIXTURE_ROOT || !process.env.ARTIUM_FIXTURE_MANIFEST))) {
@@ -63,7 +65,9 @@ for (const path of paths) {
     pending++
     continue
   }
-  const result = spawnSync(process.execPath, ['--test', ...tests], { stdio: 'inherit', env: { ...process.env, SHODAN_TEST_SLICE: id } })
+  const env = { ...process.env, SHODAN_TEST_SLICE: id }
+  if (id === 'B6.1') delete env.SHODAN_TEST_SLICE
+  const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', ...tests], { stdio: 'inherit', env })
   if (result.status === 0) passed++
   else failed++
 }

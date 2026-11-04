@@ -78,3 +78,26 @@ test('internet collection selects the requested port and never claims ownership'
     assert.equal(calls.filter(call => call.path === '/shodan/ports/443').length, 1)
   })
 })
+
+test('verbose targeted collection includes a printable view of the collected services', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, setMode }) => {
+    setMode('scan-collect')
+    const command = [...args, '--verbose']
+    const preview = await run(command)
+    const result = await run([...command, '--execute', '--confirm', preview.body.token])
+    assert.deepEqual(result.body.display.split('\n').map(line => JSON.parse(line)), result.body.events)
+    assert.deepEqual(result.body.events.map(event => event._shodan.id), ['banner-a', 'banner-b'])
+  })
+})
+
+test('quiet Internet collection suppresses events while retaining scan accounting', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, setMode }) => {
+    setMode('scan-collect')
+    const command = ['scan', 'internet', '443', 'https', '--allow-operation', 'OP-010,OP-049', '--accept-unknown-cost', '--scan-credit-budget', '1', '--max-requests', '2', '--wait', '4', '--limit', '10', '--max-bytes', '10000', '--idle-timeout', '3000', '--quiet']
+    const preview = await run(command)
+    const result = await run([...command, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.scanId, 'scan-internet')
+    assert.deepEqual(result.body.events, [])
+    assert.equal(result.body.stream.count, 4)
+  })
+})

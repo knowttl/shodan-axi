@@ -18,19 +18,21 @@ const bad = (message: string): never => { throw new ToolError('INVALID_INPUT', m
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex')
 const planSchema = z.object({ token: z.string().uuid(), binding: z.string(), created: z.number(), mac: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
 const metadataSchema = z.array(z.object({ name: z.string(), size: z.number().int().nonnegative(), sha1: z.string().regex(/^[a-fA-F0-9]{40}$/), url: z.string().url() }))
-type Draft = { dataset: string; name: string; destination: string; maxBytes: number; maxRequests: number; mode: 'new' | 'resume' | 'restart' }
+type Draft = { dataset: string; name: string; destination: string; maxBytes: number; maxRequests: number; chunkSize: number; mode: 'new' | 'resume' | 'restart' }
 
 export function transferDraft(words: string[], flags: Flags): Draft {
-  for (const flag of flags.keys()) if (!['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--max-bytes', '--max-requests', '--filename', '--execute', '--confirm', '--resume', '--restart'].includes(flag)) bad(`Flag ${flag} is not available for data download`)
+  for (const flag of flags.keys()) if (!['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--max-bytes', '--max-requests', '--filename', '--chunksize', '--execute', '--confirm', '--resume', '--restart'].includes(flag)) bad(`Flag ${flag} is not available for data download`)
   const dataset = words[2]; const name = words[3]; const filename = option(flags, '--filename'); const maxBytes = option(flags, '--max-bytes'); const maxRequests = option(flags, '--max-requests')
   if (words.length !== 4 || !dataset || !name || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(dataset) || !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,255}$/.test(name) || !filename || filename.split(/[\\/]/).includes('..')) return bad('Invalid dataset, file name or destination')
   if (!maxBytes || !/^[1-9]\d*$/.test(maxBytes) || !Number.isSafeInteger(Number(maxBytes))) return bad('A positive byte limit is required')
   if (!maxRequests || !/^[1-9]\d*$/.test(maxRequests) || !Number.isSafeInteger(Number(maxRequests)) || Number(maxRequests) > 10000) return bad('A positive bounded request limit is required')
+  const chunkSize = option(flags, '--chunksize') ?? '1048576'
+  if (!/^[1-9]\d*$/.test(chunkSize) || Number(chunkSize) > 1048576) return bad('Chunk size must be between 1 and 1048576 bytes')
   if (flags.has('--resume') && flags.has('--restart')) return bad('Choose resume or restart')
   if (option(flags, '--allow-operation') !== 'OP-034,OP-035,OP-071') throw new ToolError('WRITE_GRANT_REQUIRED', 'Dataset selection and transfer require separate operation grants', 'Pass --allow-operation OP-034,OP-035,OP-071')
   if (flags.has('--execute') !== flags.has('--confirm')) return bad('Execution requires a confirmation token')
   if (flags.has('--execute') && /^(true|1)$/i.test(process.env.SHODAN_AXI_READ_ONLY ?? '')) throw new ToolError('READ_ONLY', 'Dataset transfers are disabled', 'Use a writable environment')
-  return { dataset, name, destination: resolve(filename), maxBytes: Number(maxBytes), maxRequests: Number(maxRequests), mode: flags.has('--resume') ? 'resume' : flags.has('--restart') ? 'restart' : 'new' }
+  return { dataset, name, destination: resolve(filename), maxBytes: Number(maxBytes), maxRequests: Number(maxRequests), chunkSize: Number(chunkSize), mode: flags.has('--resume') ? 'resume' : flags.has('--restart') ? 'restart' : 'new' }
 }
 
 function approvedUrl(input: string, approvedOrigins: readonly string[]): URL {
@@ -64,14 +66,14 @@ export async function transfer(draft: Draft, flags: Flags, selection: Selection,
   if (matches.length !== 1) throw new ToolError('NOT_FOUND', 'Dataset file is not uniquely available', 'Inspect data list')
   const item = matches[0]
   if (!item || item.size > draft.maxBytes) throw new ToolError('LIMIT_REACHED', 'Dataset exceeds the byte limit', 'Increase the bound or select another file')
-  if (Math.ceil(item.size / (1024 * 1024)) + 1 > draft.maxRequests) throw new ToolError('LIMIT_REACHED', 'Dataset exceeds the request limit', 'Increase the request bound')
+  if (Math.ceil(item.size / draft.chunkSize) + 1 > draft.maxRequests) throw new ToolError('LIMIT_REACHED', 'Dataset exceeds the request limit', 'Increase the request bound')
   const url = approvedUrl(item.url, approvedOrigins)
   const root = stateRoot(); const directory = join(root, 'plans'); const signingKey = await planKey(root)
   const binding = digest(JSON.stringify({ draft, item, selection, credential: digest(key) }))
   if (!flags.has('--execute')) {
     const unsigned = { token: randomUUID(), binding, created: Date.now() }
     await writePrivate(join(directory, `${unsigned.token}.json`), JSON.stringify({ ...unsigned, mac: createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest('hex') }))
-    return { status: 'preview', token: unsigned.token, operation: 'OP-071', dataset: draft.dataset, name: draft.name, host: url.hostname, size: item.size, maxBytes: draft.maxBytes, maxRequests: draft.maxRequests, mode: draft.mode, destination: draft.destination, help: 'Repeat with --execute --confirm <token>' }
+    return { status: 'preview', token: unsigned.token, operation: 'OP-071', dataset: draft.dataset, name: draft.name, host: url.hostname, size: item.size, maxBytes: draft.maxBytes, maxRequests: draft.maxRequests, chunkSize: draft.chunkSize, mode: draft.mode, destination: draft.destination, help: 'Repeat with --execute --confirm <token>' }
   }
   const token = option(flags, '--confirm')
   if (!token || !z.string().uuid().safeParse(token).success) return bad('Invalid confirmation token')
@@ -110,7 +112,7 @@ export async function transfer(draft: Draft, flags: Flags, selection: Selection,
   if (process.platform === 'win32') windowsAcl(partial, draft.mode === 'resume' ? 'verify' : 'restrict', false)
   try {
     for (; offset < item.size;) {
-      const result = await range(url, offset, Math.min(offset + 1024 * 1024, item.size) - 1, item.size, etag)
+      const result = await range(url, offset, Math.min(offset + draft.chunkSize, item.size) - 1, item.size, etag)
       etag = result.etag; sha1.update(result.bytes); sha256.update(result.bytes); await file.writeFile(result.bytes); await file.sync()
       offset += result.bytes.length
       await writePrivate(statePath, JSON.stringify({ identity, etag, offset, sha256: sha256.copy().digest('hex') }))

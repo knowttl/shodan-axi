@@ -36,7 +36,7 @@ const selectors = [
   { flag: '--tags', id: 'OP-065', path: 'tags', pattern: /^[A-Za-z0-9_-]+(?:,[A-Za-z0-9_-]+)*$/ },
 ] as const
 
-export type StreamDraft = { operation: string; path: string; query?: string; limit: number; maxBytes: number; timeout: number; idleTimeout: number; follow: boolean; storage?: { directory: string; maxFileBytes: number; retention: number; level: number }; radar?: { filename?: string } }
+export type StreamDraft = { operation: string; path: string; query?: string; limit: number; maxBytes: number; timeout: number; idleTimeout: number; follow: boolean; fields?: string[]; separator?: string; color?: boolean; quiet?: boolean; storage?: { directory: string; maxFileBytes: number; retention: number; level: number }; radar?: { filename?: string } }
 export type StreamObserver = {
   ready(): Promise<void>
   event(value: unknown): Promise<void>
@@ -46,7 +46,7 @@ export type StreamObserver = {
 
 export function streamDraft(words: string[], flags: Flags): StreamDraft {
   const radar = words[0] === 'radar'
-  const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--accept-unknown-cost', '--limit', '--max-bytes', '--timeout', '--idle-timeout', '--execute', '--confirm', '--follow', '--datadir', '--max-file-bytes', '--retain', '--compresslevel', ...(radar ? ['--filename'] : []), ...selectors.map(item => item.flag)]
+  const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--accept-unknown-cost', '--limit', '--max-bytes', '--timeout', '--idle-timeout', '--execute', '--confirm', '--follow', '--datadir', '--max-file-bytes', '--retain', '--compresslevel', ...(words[0] === 'stream' ? ['--fields', '--separator', '--color', '--no-color', '--quiet'] : []), ...(radar ? ['--filename'] : []), ...selectors.map(item => item.flag)]
   for (const flag of flags.keys()) if (!allowed.includes(flag)) fail(`Flag ${flag} is not available for this stream`)
   const threat = words[0] === 'threatnet'
   if (threat ? words.length !== 2 || !['events', 'backscatter', 'ssh'].includes(words[1] ?? '') : words.length !== 1 || !['stream', 'radar'].includes(words[0] ?? '')) return fail('Invalid stream command')
@@ -63,6 +63,9 @@ export function streamDraft(words: string[], flags: Flags): StreamDraft {
   const follow = flags.has('--follow'); const directory = option(flags, '--datadir')
   if (radar && follow) return fail('Radar does not accept follow storage options')
   const filename = option(flags, '--filename')
+  const fields = option(flags, '--fields')?.split(',')
+  if (fields && !fields.every(field => /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/.test(field))) return fail('Invalid field selection')
+  if (flags.has('--color') && flags.has('--no-color')) return fail('Choose one color option')
   if (filename && (!isAbsolute(filename) || filename.split(/[\\/]/).includes('..'))) return fail('Radar output must be a safe absolute path')
   if (!follow && ['--datadir', '--max-file-bytes', '--retain', '--compresslevel'].some(flag => flags.has(flag))) return fail('File rotation options require --follow')
   if (follow && (!directory || !isAbsolute(directory) || directory.split(/[\\/]/).includes('..') || (!flags.has('--json') && option(flags, '--output') !== 'json'))) return fail('Follow requires JSON output and a safe absolute data directory')
@@ -73,7 +76,8 @@ export function streamDraft(words: string[], flags: Flags): StreamDraft {
     storage = { directory, maxFileBytes: number(flags, '--max-file-bytes', 1024 * 1024 * 1024), retention: number(flags, '--retain', 1000), level: Number(level) }
   }
   const path = threat ? `/threatnet/${words[1]}` : !selector ? '/shodan/banners' : selector.flag === '--alert' && input === 'all' ? '/shodan/alert' : selector.flag === '--custom-filters' ? '/shodan/custom' : `/shodan/${selector.path}/${encodeURIComponent(input ?? '').replace(/%2C/gi, ',')}`
-  return { operation, path, ...(selector?.flag === '--custom-filters' && input ? { query: input } : {}), limit: number(flags, '--limit', 10000), maxBytes: number(flags, '--max-bytes', 1024 * 1024), timeout: number(flags, '--timeout', 3600000), idleTimeout: number(flags, '--idle-timeout', 3600000), follow, ...(storage ? { storage } : {}), ...(radar ? { radar: { ...(filename ? { filename } : {}) } } : {}) }
+  const separator = option(flags, '--separator')
+  return { operation, path, ...(selector?.flag === '--custom-filters' && input ? { query: input } : {}), limit: number(flags, '--limit', 10000), maxBytes: number(flags, '--max-bytes', 1024 * 1024), timeout: number(flags, '--timeout', 3600000), idleTimeout: number(flags, '--idle-timeout', 3600000), follow, ...(fields ? { fields } : {}), ...(separator === undefined ? {} : { separator }), ...(flags.has('--color') || flags.has('--no-color') ? { color: flags.has('--color') } : {}), ...(flags.has('--quiet') ? { quiet: true } : {}), ...(storage ? { storage } : {}), ...(radar ? { radar: { ...(filename ? { filename } : {}) } } : {}) }
 }
 
 export async function stream(draft: StreamDraft, flags: Flags, selection: Selection, key: string, observer?: StreamObserver): Promise<unknown> {
@@ -152,12 +156,20 @@ async function readStream(draft: StreamDraft, origin: string, key: string, textO
         radar.add(event)
         if (interactive) process.stderr.write(`\u001b[H\u001b[2J${radar.snapshot().rows.join('\n')}\nPress q to stop\n`)
       }
-      if (observer) await observer.event(event)
+      const selected = draft.fields ? Object.fromEntries(draft.fields.map(field => {
+        let current: unknown = event
+        for (const part of field.split('.')) {
+          const object = z.record(z.string(), z.unknown()).safeParse(current)
+          current = object.success ? object.data[part] : undefined
+        }
+        return [field, current ?? null]
+      })) : event
+      if (observer && !draft.quiet) await observer.event(selected)
       else if (storage) {
         try { await storage.write(event) } catch { throw storageFailure() }
-        process.stdout.write(`${JSON.stringify({ event })}\n`)
+        if (!draft.quiet) process.stdout.write(`${JSON.stringify({ event: selected })}\n`)
       }
-      else events.push(event)
+      else if (!draft.quiet && !observer) events.push(selected)
       count++; resetIdle()
       if (count >= draft.limit) stop('max-events')
     }
@@ -198,5 +210,14 @@ async function readStream(draft: StreamDraft, origin: string, key: string, textO
   if (map && draft.radar?.filename) {
     try { artifact = await save(draft.radar.filename, Buffer.from(`${JSON.stringify(map)}\n`)) } catch { failure = storageFailure(); reason = 'storage-error' }
   }
-  return { operation: draft.operation, limit: draft.limit, maxBytes: draft.maxBytes, timeout: draft.timeout, idleTimeout: draft.idleTimeout, events, count, debugDiscarded, partialRecordCount, stopReason: reason, bytes, upstreamConnections, ...(map ? { radar: map } : {}), ...(artifact ? { saved: artifact } : {}), ...(failure ? { error: failure.code, message: failure.message, help: failure.help } : {}), ...(threat ? { domainSchemaValidated: false, contractStatus: 'source-only-unverified' } : {}) }
+  const display = !draft.quiet && (draft.separator !== undefined || draft.color !== undefined) ? events.map(event => {
+    const object = z.record(z.string(), z.unknown()).parse(event)
+    const line = (draft.fields ?? ['ip_str', 'port', 'hostnames', 'data']).map(field => {
+      const cell = object[field]
+      const text = cell == null ? '' : typeof cell === 'string' || typeof cell === 'number' || typeof cell === 'boolean' ? String(cell) : JSON.stringify(cell)
+      return text.replace(/[\p{Cc}]/gu, control => control === '\n' ? '\\n' : control === '\r' ? '\\r' : control === '\t' ? '\\t' : `\\u${control.charCodeAt(0).toString(16).padStart(4, '0')}`)
+    }).join(draft.separator ?? '\t')
+    return draft.color ? `\u001b[36m${line}\u001b[0m` : line
+  }).join('\n') : undefined
+  return { operation: draft.operation, limit: draft.limit, maxBytes: draft.maxBytes, timeout: draft.timeout, idleTimeout: draft.idleTimeout, events, count, debugDiscarded, partialRecordCount, stopReason: reason, bytes, upstreamConnections, ...(display === undefined ? {} : { display }), ...(map ? { radar: map } : {}), ...(artifact ? { saved: artifact } : {}), ...(failure ? { error: failure.code, message: failure.message, help: failure.help } : {}), ...(threat ? { domainSchemaValidated: false, contractStatus: 'source-only-unverified' } : {}) }
 }

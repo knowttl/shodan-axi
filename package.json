@@ -19,6 +19,7 @@
     "dist/",
     "axi-credential.schema.json",
     "command-inventory.json",
+    "COMMISSIONING.md",
     "skills/"
   ],
   "engines": {

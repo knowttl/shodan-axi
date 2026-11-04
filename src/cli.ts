@@ -1,5 +1,6 @@
 import { encode } from '@toon-format/toon'
 import { homedir } from 'node:os'
+import { readFile } from 'node:fs/promises'
 import { z } from 'zod'
 import { configPath, putProfile, readConfig, secret, select } from './credentials.js'
 import { alertEvidence, validateAlertEvidence } from './alert-evidence.js'
@@ -17,10 +18,12 @@ import { clean } from './redact.js'
 import { read } from './vendor.js'
 import { stream, streamDraft } from './stream.js'
 import { collectScan } from './scan-collect.js'
+import { setup } from './setup.js'
 
-const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, download, data list, data download, stream, radar, threatnet events, threatnet backscatter, threatnet ssh, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, alert export, alert stats, alert download, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns, parse, convert'
+const usage = 'Commands: setup, skill, version, info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, download, data list, data download, stream, radar, threatnet events, threatnet backscatter, threatnet ssh, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, alert export, alert stats, alert download, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns, parse, convert'
 const help: Record<string, string> = {
   '': usage,
+  version: 'version - print the packaged version',
   info: 'info [--profile <name>] [--config <absolute-path>] [--json] - inspect plan and credits',
   'account profile': 'account profile [--profile <name>] [--config <absolute-path>] [--json] - inspect membership',
   doctor: 'doctor [--profile <name>] [--config <absolute-path>] [--json] - make one account information request',
@@ -38,13 +41,14 @@ export async function main(args: string[]): Promise<void> {
     const flags = new Map<string, string | boolean>()
     const words: string[] = []
     const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename', '-f': '--filters' }
-    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force', '--resume', '--restart', '--follow', '--quiet']
-    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--dataset', '--alert-id', '--asn', '--countries', '--ports', '--custom-filters', '--alert', '--tags', '--idle-timeout', '--datadir', '--max-file-bytes', '--retain', '--compresslevel', '--wait']
+    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force', '--resume', '--restart', '--follow', '--quiet', '--verbose']
+    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--dataset', '--alert-id', '--asn', '--countries', '--ports', '--custom-filters', '--alert', '--tags', '--idle-timeout', '--datadir', '--max-file-bytes', '--retain', '--compresslevel', '--chunksize', '--wait']
     for (let index = 0; index < args.length; index++) {
       const input = args[index]
       if (!input) continue
       const arg = aliases[input] ?? input
       if (!arg.startsWith('-')) { words.push(arg); continue }
+      if (arg === '--streamer') throw new ToolError('INVALID_INPUT', 'Per-call stream origin overrides are not supported', 'Configure a trusted streamOrigin in the selected standalone profile')
       if (![...booleanFlags, ...valueFlags].includes(arg) || (flags.has(arg) && arg !== '--filters')) {
         const flag = /^--[a-z][a-z0-9-]*$/.test(arg) ? arg : 'flag'
         throw new ToolError('INVALID_INPUT', `Unknown or repeated ${flag}`, 'Valid flags: --help, --json, --config, --profile; profile setup also accepts --env or --file')
@@ -67,6 +71,17 @@ export async function main(args: string[]): Promise<void> {
     if (readOnly && !/^(?:true|false|1|0)$/i.test(readOnly)) throw new ToolError('CONFIG_INVALID', 'Invalid read-only setting', 'Set SHODAN_AXI_READ_ONLY to true or false')
     const option = (flag: string): string | undefined => { const value = flags.get(flag); return typeof value === 'string' ? value : undefined }
     const command = words.join(' ')
+    if (words[0] === 'setup' || words[0] === 'skill') {
+      if ([...flags.keys()].some(flag => !['--help', '--json', '--output'].includes(flag))) throw new ToolError('INVALID_INPUT', 'Flag is not available for this command', 'Use setup <claude|codex|opencode> or skill')
+      if (flags.has('--help')) { output({ command: words[0], help: words[0] === 'setup' ? 'setup <claude|codex|opencode> - install an opt-in session integration' : 'skill - print the generated discovery skill' }, json); return }
+      if (words[0] === 'setup' && words.length === 2 && words[1]) { output(await setup(words[1]), json); return }
+      if (command === 'skill') {
+        const skill = await readFile(new URL('../skills/shodan-axi/SKILL.md', import.meta.url), 'utf8')
+        if (json) output({ skill }, true); else process.stdout.write(skill)
+        return
+      }
+      throw new ToolError('INVALID_INPUT', 'Invalid setup or skill command', 'Use setup <claude|codex|opencode> or skill')
+    }
     if (words[0] === 'stream' || words[0] === 'threatnet' || words[0] === 'radar') {
       if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), help: words[0] === 'radar' ? 'Select a bounded stream, preview and confirm as for stream; press q to stop in a terminal or pass --filename to save the map.' : 'Select one stream, supply its --allow-operation, --accept-unknown-cost, --limit, --max-bytes, --timeout and --idle-timeout, then repeat the preview with --execute --confirm <token>. Follow also requires --json, --datadir, --max-file-bytes and --retain.' }, json); return }
       const draft = streamDraft(words, flags)
@@ -74,7 +89,13 @@ export async function main(args: string[]): Promise<void> {
       key = await secret(selected)
       const result = await stream(draft, flags, selected, key)
       if (result && typeof result === 'object' && 'error' in result) process.exitCode = 1
-      output(clean(result, key), json); return
+      const cleaned = clean(result, key)
+      if (!json && cleaned && typeof cleaned === 'object' && 'display' in cleaned && typeof cleaned.display === 'string') {
+        const { display, ...summary } = cleaned
+        process.stdout.write(`${display}\n`)
+        output(summary, false)
+      } else output(cleaned, json)
+      return
     }
     if (words[0] === 'alert' && words[1] === 'download') {
       if (flags.has('--help')) { output({ command: 'alert download', help: 'alert download [--alert-id <id>] --filename <path> --limit <count> --max-bytes <bytes> --max-requests <count> --allow-operation OP-003 --query-credit-budget <credits>; preview first, then repeat with --execute --confirm <token>' }, json); return }
@@ -137,9 +158,16 @@ export async function main(args: string[]): Promise<void> {
           return { selection, key }
         })
         if (typeof result === 'object' && result !== null && 'status' in result && result.status === 'partial') process.exitCode = 1
-        output(clean(result, key), json); return
+        const cleaned = clean(result, key)
+        if (!json && cleaned && typeof cleaned === 'object' && 'display' in cleaned && typeof cleaned.display === 'string') {
+          const { display, ...summary } = cleaned
+          process.stdout.write(`${display}\n`)
+          output(summary, false)
+        } else output(cleaned, json)
+        return
       }
       if (words[0] === 'scan' && words[1] === 'internet') flags.delete('--quiet')
+      if (words[0] === 'scan' && words[1] === 'submit') flags.delete('--verbose')
       if (immediate) flags.delete('--wait')
       validateMutationFlags(flags)
       if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), effect: 'write', cost: words[0] === 'scan' && words[1] === 'submit' ? 'scan' : 'unknown', help: words[0] === 'scan' ? 'Preview with --allow-operation, --scan-credit-budget and --max-requests; Internet scans also require --accept-unknown-cost. Repeat with --execute --confirm <token>.' : 'Preview with exact --allow-operation, --accept-unknown-cost, --query-credit-budget and --max-requests; repeat the request with --execute --confirm <token>.' }, json); return }

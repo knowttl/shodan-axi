@@ -48,6 +48,7 @@ Exports that stop before all results are saved, or include provider-truncated re
 `SHODAN_AXI_READ_ONLY=true` refuses execution of these search exports; previews remain available.
 Hosted execution refuses chargeable exports and dataset transfers before retrieving credentials.
 Native `stream` supports one of `--asn`, `--countries`, `--ports`, `--vulns`, `--custom-filters`, `--alert` or `--tags`, or the unfiltered banner stream.
+Use `--fields` to select event fields, `--separator` and `--color` or `--no-color` for a text view, and `--quiet` to suppress event output while retaining the final accounting.
 `threatnet events`, `threatnet backscatter` and `threatnet ssh` select the separate Threatnet streams.
 Streams require an exact `--allow-operation`, `--accept-unknown-cost`, `--limit`, `--max-bytes`, `--timeout` and `--idle-timeout`, followed by the same protected preview and confirmation used for other active operations.
 Timeouts use milliseconds; the idle timer starts at dispatch and resets on each incoming chunk, including debug records and SSE keepalives.
@@ -110,8 +111,13 @@ Streams use the selected profile's `streamOrigin`, defaulting to `https://stream
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B5.2 --paths native,artium --offline --with-dependencies`.
+Use `shodan-axi setup claude`, `shodan-axi setup codex` or `shodan-axi setup opencode` to opt into local session integration for that agent.
+The integration reports local authentication status at session start and can be installed again to update the executable path.
+Alternatively, install the packaged `shodan-axi` skill for on-demand guidance; `shodan-axi skill` prints its contents.
+
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B6.1 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
+See [the commissioning checklist](COMMISSIONING.md) for release evidence and separately authorized live checks.
 The Artium companion owns session admission, authorization and revision rechecks, quotas, replay accounting, revocation and private-directory cleanup; this package owns the worker protocol.
 The companion must launch the worker with a private inherited duplex fd 3 and send the first JSONL frame as `{ "version": 1, "type": "admit", "requestId": "<unique>", "admission": "<session-random-binding>", "profilePath": "<private-absolute-path>" }`.
 The binding must contain 32 to 128 characters and appear as `admission` on every `start` and `extend` frame after the host has authorized that operation; duplicate admission, missing admission and mismatched bindings terminate the worker.
