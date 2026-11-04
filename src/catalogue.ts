@@ -33,6 +33,6 @@ export const operations = [
   { id: 'OP-025', command: 'notifier list', path: '/notifier', effect: 'read', cost: 'none', acceptance: 'AC-025' },
   { id: 'OP-026', command: 'notifier providers', path: '/notifier/provider', effect: 'read', cost: 'none', acceptance: 'AC-026' },
   { id: 'OP-029', command: 'notifier get', path: '/notifier/{id}', effect: 'read', cost: 'none', acceptance: 'AC-029', argument: 'id' },
-  { id: 'OP-036', command: 'org info', path: '/org', effect: 'read', cost: 'none', acceptance: 'AC-036', flags: ['--credential-file'] },
+  { id: 'OP-036', command: 'org info', path: '/org', effect: 'read', cost: 'none', acceptance: 'AC-036' },
   { id: 'OP-072', command: 'myip --ipv6', path: '/tools/myip', effect: 'read', cost: 'none', acceptance: 'AC-072' },
 ] as const satisfies readonly ReadOperation[]

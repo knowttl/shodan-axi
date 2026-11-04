@@ -2,13 +2,11 @@ import { isIP } from 'node:net'
 import { constants } from 'node:fs'
 import { lstat, open } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
-import { isAbsolute } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { z } from 'zod'
 import { operations, type ReadOperation } from './catalogue.js'
 import { ToolError } from './errors.js'
 import { clean } from './redact.js'
-import { writePrivate } from './private-file.js'
 import { requestJson } from './vendor.js'
 import { windowsAcl } from './windows-acl.js'
 
@@ -42,7 +40,6 @@ export function planInvestigation(words: string[], flags: Flags): Investigation 
     ...(operation.cost === 'unknown' ? ['--accept-unknown-cost'] : []), ...(selected.flags ?? [])]
   if (operation.id === 'OP-059' && (flags.has('--config') || flags.has('--profile'))) fail('InternetDB does not use a credential profile')
   for (const flag of flags.keys()) if (!allowed.includes(flag)) fail(`Flag ${flag} is not available for this command`)
-  if (flags.has('--credential-file') && !isAbsolute(value(flags, '--credential-file') ?? '')) fail('Credential destination must be an absolute path')
   const argument = selected.argument && words.length > selected.command.split(' ').length ? words.at(-1) : undefined
   if (argument !== undefined) {
     if (!argument || argument.length > 4096) fail('Invalid selector')
@@ -196,14 +193,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
   const raw = await dispatch(path, query, operation.cost !== 'none')
   if (operation.id === 'OP-036') {
     const member = z.object({ username: z.string(), email: z.string() })
-    const schema = z.object({ id: z.string(), name: z.string(), created: z.string().optional(), admins: z.array(member), members: z.array(member), upgrade_type: z.string().optional(), domains: z.array(z.string()), logo: z.boolean(), api_key: z.string().min(1).optional() })
-    const result = parse(schema, raw)
-    const destination = value(flags, '--credential-file')
-    if (destination) {
-      if (!result.api_key) throw new ToolError('NOT_FOUND', 'No issued credential is available', 'Inspect the organization response before requesting a credential')
-      await writePrivate(destination, result.api_key)
-    }
-    return schema.omit({ api_key: true }).parse(result)
+    return parse(z.object({ id: z.string(), name: z.string(), created: z.string().optional(), admins: z.array(member), members: z.array(member), upgrade_type: z.string().optional(), domains: z.array(z.string()), logo: z.boolean() }), raw)
   }
   if (operation.id === 'OP-014') {
     const result = parse(z.object({ id: z.string(), name: z.string(), filters: z.object({ ip: z.array(z.string()) }).passthrough() }).passthrough(), raw)

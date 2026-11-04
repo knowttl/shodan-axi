@@ -1,21 +1,16 @@
 import assert from 'node:assert/strict'
-import { readFile, stat } from 'node:fs/promises'
+import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { withInvestigation } from './investigation-fixture.mjs'
 
-test('organization reads omit issued credentials unless explicitly saved privately', { timeout: 30000 }, async () => {
-  await withInvestigation(async ({ root, run }) => {
+test('organization reads omit issued credentials', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run }) => {
     const info = await run(['org', 'info'])
+    assert.equal(info.code, 0)
     assert.equal(info.body.name, 'Synthetic Org')
     assert.equal(info.body.members[0].email, 'existing@example.test')
     assert.doesNotMatch(info.stdout + info.stderr, /issued-secret|api_key/)
-    const destination = join(root, 'issued-key')
-    const saved = await run(['org', 'info', '--credential-file', destination])
-    assert.equal(saved.code, 0)
-    assert.doesNotMatch(saved.stdout + saved.stderr, /issued-secret|api_key/)
-    assert.equal(await readFile(destination, 'utf8'), 'issued-secret')
-    if (process.platform !== 'win32') assert.equal((await stat(destination)).mode & 0o077, 0)
   })
 })
 

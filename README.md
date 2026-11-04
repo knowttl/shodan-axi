@@ -27,7 +27,6 @@ Exports append gzip-compressed JSON lines with one record per month and nested f
 Alert and notifier reads and writes are available through the native CLI.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
 An add notifies the member unless `--silent` is supplied; a removal preview reports the downgrade effect.
-The `org info --credential-file <absolute-path>` option explicitly saves an issued credential to a protected local file without displaying it.
 Writes require an exact operation grant, unknown-cost acceptance and request and credit bounds.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
 For example, preview a removal with `shodan-axi alert remove <id> --allow-operation OP-015 --accept-unknown-cost --query-credit-budget 1 --max-requests 3`.

@@ -255,7 +255,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         const before = requests.length; const beforeCredentials = credentialReads
         for (const args of [
           ['org', 'add', 'new@example.test'], ['org', 'add', 'new@example.test', '--silent'],
-          ['org', 'remove', 'existing@example.test'], ['org', 'info', '--credential-file', '/tmp/issued-key'],
+          ['org', 'remove', 'existing@example.test'],
           ['org', 'add', 'new@example.test', '--allow-operation', 'OP-037', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
           ['org', 'remove', 'existing@example.test', '--allow-operation', 'OP-038', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3', '--execute', '--confirm', '00000000-0000-4000-8000-000000000001'],
         ]) {
