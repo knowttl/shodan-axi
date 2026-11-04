@@ -119,12 +119,15 @@ export async function evidence(words: string[], flags: Flags): Promise<unknown> 
     if (filename) {
       if (!predicates.length) return invalid('A filter is required when saving parsed records')
       const destination = outputPath(filename.endsWith('.json.gz') ? filename : `${filename}.json.gz`)
-      const text = rows.map(row => JSON.stringify(row)).join('\n') + (rows.length ? '\n' : '')
+      let prior: RecordValue[] = []
+      try { prior = await records(destination) } catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
+      const combined = [...prior, ...rows]
+      if (combined.length > 100000) return invalid('Saved output exceeds the limit')
+      const text = combined.map(row => JSON.stringify(row)).join('\n') + (combined.length ? '\n' : '')
+      if (Buffer.byteLength(text) > 10 * 1024 * 1024) return invalid('Saved output exceeds the limit')
       const bytes = gzipSync(text)
-      let prior: Buffer<ArrayBufferLike> = Buffer.alloc(0)
-      try { prior = await readPrivateBytes(resolve(destination), false); const decoded = gunzipSync(prior, { maxOutputLength: 10 * 1024 * 1024 }); if (decoded.length + Buffer.byteLength(text) > 10 * 1024 * 1024) return invalid('Saved output exceeds the limit') } catch (error) { if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error }
-      if (prior.length + bytes.length > 1024 * 1024) return invalid('Saved output exceeds the limit')
-      artifact = await save(destination, Buffer.concat([prior, bytes]), true)
+      if (bytes.length > 1024 * 1024) return invalid('Saved output exceeds the limit')
+      artifact = await save(destination, bytes, true)
     }
     return { items: output, count: output.length, complete: true, display, ...(artifact ? { saved: artifact } : {}) }
   }

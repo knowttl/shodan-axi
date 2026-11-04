@@ -99,6 +99,46 @@ test('CSV conversion encodes formula cells as literal text', { timeout: 30000 },
   })
 })
 
+test('parse bounds appended record counts and preserves readable evidence at the limit', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    const input = join(root, 'records.json.gz')
+    const remaining = join(root, 'remaining.json.gz')
+    await writeFile(input, gzipSync('{"a":1}\n'.repeat(60000)), { mode: 0o600 })
+    await writeFile(remaining, gzipSync('{"a":1}\n'.repeat(40000)), { mode: 0o600 })
+    const saved = join(root, 'filtered.json.gz')
+    const flags = ['--filters', 'a:1', '--fields', 'a', '--filename', saved]
+    assert.equal((await run(['parse', input, ...flags])).code, 0)
+    const prior = await readFile(saved)
+    assert.equal((await run(['parse', input, ...flags])).body.error, 'INVALID_INPUT')
+    assert.deepEqual(await readFile(saved), prior)
+    assert.equal((await run(['parse', remaining, ...flags])).code, 0)
+    const reopened = await run(['parse', saved, '--fields', 'a'])
+    assert.equal(reopened.code, 0)
+    assert.equal(reopened.body.count, 100000)
+    assert.equal((await run(['convert', saved, 'csv', '--fields', 'a'])).code, 0)
+  })
+})
+
+test('parse counts JSONL separators in fresh and appended decompressed limits', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ root, run }) => {
+    const input = join(root, 'records.json.gz')
+    const row = JSON.stringify({ a: 1, data: 'x'.repeat(93) })
+    assert.equal(Buffer.byteLength(row), 110)
+    await writeFile(input, gzipSync(`${row}\n`.repeat(47500)), { mode: 0o600 })
+    const saved = join(root, 'filtered.json.gz')
+    const flags = ['--filters', 'a:1', '--fields', 'a', '--filename', saved]
+    assert.equal((await run(['parse', input, input, ...flags])).body.error, 'INVALID_INPUT')
+    await assert.rejects(readFile(saved), { code: 'ENOENT' })
+    assert.equal((await run(['parse', input, ...flags])).code, 0)
+    const prior = await readFile(saved)
+    assert.equal((await run(['parse', input, ...flags])).body.error, 'INVALID_INPUT')
+    assert.deepEqual(await readFile(saved), prior)
+    const reopened = await run(['parse', saved, '--fields', 'a'])
+    assert.equal(reopened.code, 0)
+    assert.equal(reopened.body.count, 47500)
+  })
+})
+
 test('parse escapes banner terminal controls before applying color', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run }) => {
     const input = join(root, 'controls.json')
