@@ -66,7 +66,14 @@ export async function withInvestigation(check) {
           response.end('{"success":true}'); return
         }
         const ignore = /^\/shodan\/alert\/([^/]+)\/trigger\/([^/]+)\/ignore\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname)
-        if (ignore) { response.end('{"success":true}'); return }
+        if (ignore) {
+          if (mode === 'ignore-timeout') return
+          if (mode === 'ignore-failed') { response.writeHead(500); response.end('{"error":"failed"}'); return }
+          if (mode === 'ignore-rejected') { response.end('{"success":false}'); return }
+          if (mode === 'ignore-ambiguous') { response.end('{}'); return }
+          if (mode === 'ignore-malformed') { response.end('{broken'); return }
+          response.end('{"success":true}'); return
+        }
         const association = /^\/shodan\/alert\/([^/]+)\/notifier\/([^/]+)$/.exec(url.pathname)
         if (association) {
           const alert = alerts.get(association[1])
@@ -143,10 +150,12 @@ export async function withInvestigation(check) {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const origin = `https://127.0.0.1:${server.address().port}`
     const preload = join(root, 'routing.mjs')
+    const timerPreload = join(root, 'timers.mjs')
+    await writeFile(timerPreload, `if (process.env.TEST_SHORT_REQUEST_TIMEOUT) { const schedule = globalThis.setTimeout; globalThis.setTimeout = (callback, delay, ...args) => schedule(callback, delay === 30000 ? 1000 : delay, ...args) }\n`)
     await writeFile(preload, `import https from 'node:https'; import { syncBuiltinESMExports } from 'node:module';\nconst request = https.request; https.request = function (url, ...args) { if (!(url instanceof URL)) throw new Error('Unexpected destination'); const family = url.origin; if (![${JSON.stringify(origin)}, 'https://internetdb.shodan.io', 'https://apiv6.shodan.io', 'https://trends.shodan.io', 'https://exploits.shodan.io'].includes(family)) throw new Error('Unexpected destination'); const target = new URL(url); if (family !== ${JSON.stringify(origin)}) { target.hostname = '127.0.0.1'; target.port = ${JSON.stringify(String(server.address().port))}; if (family === 'https://apiv6.shodan.io') { if (args[0].family !== 6) throw new Error('IPv6 was not selected'); if (process.env.TEST_FAIL_V6) throw new Error('IPv6 unavailable'); args[0].family = 4; args[0].headers = { ...args[0].headers, 'x-test-family': 'ipv6' }; } } const outgoing = request.call(this, target, ...args); if (process.env.TEST_EXPIRE_ON_PATH === target.pathname) outgoing.on('response', response => { response.on('end', () => { const expired = Date.now() + 30000; Date.now = () => expired }) }); return outgoing }; syncBuiltinESMExports();\n`)
     const config = join(root, 'config.json')
     await writeFile(config, JSON.stringify({ version: 1, defaultProfile: 'selected', profiles: { selected: { auth: 'api-key', origin, apiKey: { env: 'TEST_SHODAN_KEY' } } } }), { mode: 0o600 })
-    const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload}`, NODE_EXTRA_CA_CERTS: certFile }
+    const env = { PATH: process.env.PATH, HOME: root, SHODAN_AXI_CONFIG: config, TEST_SHODAN_KEY: 'fake-secret', NODE_OPTIONS: `--import=${preload} --import=${timerPreload}`, NODE_EXTRA_CA_CERTS: certFile }
     const run = (args, overrides = {}) => new Promise((resolve, reject) => {
       const child = spawn(executable, [...args, '--json'], { cwd: root, env: { ...env, ...overrides }, signal: AbortSignal.timeout(10000) })
       let stdout = ''; let stderr = ''

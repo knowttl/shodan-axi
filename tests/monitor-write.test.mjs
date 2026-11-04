@@ -188,7 +188,7 @@ test('import executes only the confirmed ordered actions without exposing notifi
   })
 })
 
-test('import stops when a prior action cannot be verified', { timeout: 30000 }, async () => {
+test('import stops when readback contradicts an acknowledged action', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ root, run, calls, setMode }) => {
     const path = join(root, 'import.json.gz')
     const input = [{ name: 'Imported', filters: { ip: ['192.0.2.0/24'] }, triggers: { new_service: {} }, notifiers: [{ id: 'old', provider: 'email', args: { to: 'hidden@example.test' } }] }]
@@ -198,8 +198,54 @@ test('import stops when a prior action cannot be verified', { timeout: 30000 }, 
     setMode('trigger-unverified')
     const result = await run(['alert', 'import', path, ...options, '--execute', '--confirm', preview.body.token])
     assert.equal(result.body.status, 'READBACK_UNVERIFIED')
+    assert.equal(result.code, 1)
+    assert.deepEqual(result.body.steps.map(item => item.status), ['verified', 'verified', 'failed', 'not-attempted'])
     assert.deepEqual(result.body.unsent.map(item => item.operation), ['OP-023'])
     assert.equal(calls.filter(call => call.method !== 'GET').length, 3)
+  })
+})
+
+for (const [mode, status, outcomes, writes] of [
+  ['normal', 'completed', ['verified', 'verified', 'verified', 'acknowledged-unverified', 'verified'], 5],
+  ['ignore-failed', 'OUTCOME_UNKNOWN', ['verified', 'verified', 'verified', 'failed', 'not-attempted'], 4],
+  ['ignore-rejected', 'OUTCOME_UNKNOWN', ['verified', 'verified', 'verified', 'failed', 'not-attempted'], 4],
+  ['ignore-ambiguous', 'OUTCOME_UNKNOWN', ['verified', 'verified', 'verified', 'failed', 'not-attempted'], 4],
+  ['ignore-malformed', 'OUTCOME_UNKNOWN', ['verified', 'verified', 'verified', 'failed', 'not-attempted'], 4],
+  ['ignore-timeout', 'OUTCOME_UNKNOWN', ['verified', 'verified', 'verified', 'failed', 'not-attempted'], 4],
+]) {
+  test(`import ignore then attachment reports ordered outcomes in ${mode} mode`, { timeout: 30000 }, async () => {
+    await withInvestigation(async ({ root, run, calls, setMode }) => {
+      const path = join(root, 'import.json')
+      const input = { name: 'Imported', filters: { ip: ['192.0.2.0/24'] }, triggers: { new_service: { ignore: ['192.0.2.7:443'] } }, notifiers: [{ id: 'old', provider: 'email', args: { to: 'hidden@example.test' } }] }
+      await writeFile(path, JSON.stringify([input]), { mode: 0o600 })
+      const options = ['--allow-operation', 'OP-027,OP-013,OP-019,OP-021,OP-023', '--accept-unknown-cost', '--query-credit-budget', '5', '--max-requests', '12']
+      const preview = await run(['alert', 'import', path, ...options])
+      assert.equal(preview.body.status, 'preview')
+      setMode(mode)
+      const result = await run(['alert', 'import', path, ...options, '--execute', '--confirm', preview.body.token], { TEST_SHORT_REQUEST_TIMEOUT: '1' })
+      assert.equal(result.body.status, status)
+      assert.equal(result.code, status === 'completed' ? 0 : 1)
+      assert.deepEqual(result.body.steps.map(item => item.operation), ['OP-027', 'OP-013', 'OP-019', 'OP-021', 'OP-023'])
+      assert.deepEqual(result.body.steps.map(item => item.status), outcomes)
+      assert.equal(calls.filter(call => call.method !== 'GET').length, writes)
+      assert.equal(calls.filter(call => call.path.endsWith('/notifier/notifier-new')).length, writes - 4)
+      const journal = (await readFile(join(root, '.local/state/shodan-axi/writes.log'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+      assert.deepEqual(journal.filter(entry => entry.phase === 'result').map(entry => entry.status), outcomes.slice(0, writes))
+      assert.doesNotMatch(result.stdout + JSON.stringify(journal), /hidden@example/)
+    })
+  })
+}
+
+test('contradictory readback fails the final action too', { timeout: 30000 }, async () => {
+  await withInvestigation(async ({ run, setMode }) => {
+    const args = ['alert', 'enable', 'alert-a', 'any', '--allow-operation', 'OP-019', '--accept-unknown-cost', '--query-credit-budget', '1', '--max-requests', '3']
+    const preview = await run(args)
+    setMode('trigger-unverified')
+    const result = await run([...args, '--execute', '--confirm', preview.body.token])
+    assert.equal(result.body.status, 'READBACK_UNVERIFIED')
+    assert.equal(result.code, 1)
+    assert.deepEqual(result.body.steps.map(item => item.status), ['failed'])
+    assert.deepEqual(result.body.unsent, [])
   })
 })
 
@@ -230,6 +276,7 @@ test('each supported mutation dispatches exactly its selected request', { timeou
       const before = calls.filter(call => call.method !== 'GET').length
       const result = await run([...args, ...options, '--execute', '--confirm', preview.body.token])
       assert.equal(result.body.status, 'completed', operation)
+      assert.equal(result.body.steps[0].status, ['OP-021', 'OP-022', 'OP-070', 'OP-030'].includes(operation) ? 'acknowledged-unverified' : 'verified', operation)
       const writes = calls.filter(call => call.method !== 'GET')
       assert.equal(writes.length, before + 1, operation)
       assert.equal(writes.at(-1).method, method, operation)

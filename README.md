@@ -28,6 +28,8 @@ Alert and notifier reads and writes are available through the native CLI.
 Writes require an exact operation grant, unknown-cost acceptance and request and credit bounds.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
 Plans bind the selected profile, credential, input, effects and observed state; uncertain sends are never automatically retried.
+Execution lists every step as `verified`, `acknowledged-unverified`, `failed`, or `not-attempted`.
+Definitively acknowledged mutations without a readback contract are journaled as `acknowledged-unverified` and allow ordered execution to continue; failed or ambiguous writes and failed or contradictory readbacks stop subsequent steps.
 Notifier creation and updates use a private absolute `--body-file` containing JSON with an `args` object; creation also requires a provider.
 Hosted use admits the free alert and notifier reads and refuses all writes before retrieving credentials.
 Provider mutation encoding and live readback contracts remain unverified.

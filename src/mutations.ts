@@ -277,7 +277,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
     try {
       const response = await requestJson(selection.profile.origin, step.path, key, {}, 1024 * 1024, 30000, false, undefined, { method: step.method, ...(step.body === undefined ? {} : { body: step.body }), ...(step.contentType === undefined ? {} : { contentType: step.contentType }) })
       const parsed = record.safeParse(response)
-      if (!parsed.success) throw new Error('invalid acknowledgement')
+      if (!parsed.success || (Object.hasOwn(parsed.data, 'success') && parsed.data.success !== true) || Object.hasOwn(parsed.data, 'error')) throw new Error('invalid acknowledgement')
       if (['OP-013', 'OP-016'].includes(step.operation)) {
         if (typeof parsed.data.id !== 'string' || (step.operation === 'OP-016' && parsed.data.id !== step.target)) throw new Error('invalid alert acknowledgement')
       } else if (parsed.data.success !== true) throw new Error('invalid acknowledgement')
@@ -285,8 +285,9 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
       if (['OP-013', 'OP-027'].includes(step.operation) && !createdId) throw new Error('missing created identifier')
       if (createdId && step.assign) created.set(step.assign, createdId)
       const readbackPath = createdId ? step.operation === 'OP-013' ? `/shodan/alert/${encodeURIComponent(createdId)}/info` : `/notifier/${encodeURIComponent(createdId)}` : step.readback
+      const hasReadback = ['OP-013', 'OP-016', 'OP-019', 'OP-020', 'OP-023', 'OP-024', 'OP-027', 'OP-015', 'OP-028'].includes(step.operation)
       let readback = 'unverified'
-      try {
+      if (hasReadback) try {
         const observed = record.safeParse(await requestJson(selection.profile.origin, readbackPath, key))
         if (observed.success) {
           if (step.operation === 'OP-013' || step.operation === 'OP-016') {
@@ -303,14 +304,19 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
           } else if (step.operation === 'OP-027' && observed.data.id === createdId) readback = 'verified'
         }
       } catch (error) { if (error instanceof ToolError && error.code === 'NOT_FOUND' && ['OP-015', 'OP-028'].includes(step.operation)) readback = 'verified-absent' }
-      const outcome = { operation: step.operation, target: step.target, acknowledged: true, ...(createdId ? { id: createdId } : {}), readback }
+      const status = !hasReadback ? 'acknowledged-unverified' : readback === 'unverified' ? 'failed' : 'verified'
+      const outcome = { operation: step.operation, target: step.target, status, acknowledged: true, ...(createdId ? { id: createdId } : {}), readback }
       results.push(outcome)
       await appendPrivate(log, `${JSON.stringify(clean({ token, ...outcome, phase: 'result', at: Date.now() }, key))}\n`)
-      if (readback === 'unverified' && results.length < draft.steps.length) return { status: 'READBACK_UNVERIFIED', completed: results, unsent: draft.steps.slice(results.length).map(next => ({ operation: next.operation, target: next.target })) }
+      if (status === 'failed') {
+        const unsent = draft.steps.slice(results.length).map(next => ({ operation: next.operation, target: next.target, status: 'not-attempted' }))
+        return { status: 'READBACK_UNVERIFIED', completed: results, unsent, steps: [...results, ...unsent] }
+      }
     } catch {
-      const outcome = { operation: step.operation, target: step.target, status: 'OUTCOME_UNKNOWN', recovery: `Read ${step.readback} before retrying` }
+      const outcome = { operation: step.operation, target: step.target, status: 'failed', recovery: `Read ${step.readback} before retrying` }
       await appendPrivate(log, `${JSON.stringify(clean({ token, ...outcome, phase: 'result', at: Date.now() }, key))}\n`)
-      return { status: 'OUTCOME_UNKNOWN', completed: results, uncertain: outcome, unsent: draft.steps.slice(results.length + 1).map(next => ({ operation: next.operation, target: next.target })) }
+      const unsent = draft.steps.slice(results.length + 1).map(next => ({ operation: next.operation, target: next.target, status: 'not-attempted' }))
+      return { status: 'OUTCOME_UNKNOWN', completed: results, uncertain: outcome, unsent, steps: [...results, outcome, ...unsent] }
     }
   }
   return { status: 'completed', steps: results }
