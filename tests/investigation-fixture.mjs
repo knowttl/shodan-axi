@@ -16,16 +16,78 @@ export async function withInvestigation(check) {
       '-days', '1', '-subj', '/CN=localhost', '-addext', 'subjectAltName=IP:127.0.0.1'], { stdio: 'ignore' })
     const calls = []
     let mode = 'normal'
+    const alerts = new Map([['alert-a', { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null }]])
+    const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } }]])
     const banner = (transport, timestamp) => ({ ip_str: '192.0.2.7', port: 443, transport, timestamp, data: 'synthetic banner fake-secret', location: { country_code: 'CA' }, ssl: { cert: { pubkey: { bits: 2048, type: 'rsa' } } } })
     const banners = [banner('tcp', '2026-01-01'), banner('udp', '2026-01-02'), { ...banner('tcp', '2026-01-03'), metadata: { truncated: ['http.html'] } }]
-    server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, (request, response) => {
+    server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
-      calls.push({ path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
       if (mode === 'denied') { response.writeHead(403); response.end('{"error":"denied"}'); return }
       if (mode === 'redirect') { response.writeHead(301, { location: 'https://invalid.example/' }); response.end(); return }
       if (mode === 'malformed') { response.end('{broken'); return }
       if (mode === 'timeout') { request.socket.destroy(); return }
       if (mode === 'bad-port') { response.end('[22,"443"]'); return }
+      if (request.method !== 'GET') {
+        const chunks = []
+        for await (const chunk of request) chunks.push(chunk)
+        const input = Buffer.concat(chunks).toString()
+        calls.at(-1).body = input
+        const match = /^\/shodan\/alert\/([^/]+)$/.exec(url.pathname)
+        if (request.method === 'POST' && url.pathname === '/notifier') {
+          const fields = Object.fromEntries(new URLSearchParams(input)); const created = { id: 'notifier-new', provider: fields.provider, args: fields }
+          notifiers.set(created.id, created); response.end(JSON.stringify({ id: created.id, success: true })); return
+        }
+        if (request.method === 'POST' && url.pathname === '/shodan/alert') {
+          const body = JSON.parse(input); const created = { id: 'alert-new', ...body, triggers: {}, notifiers: [], expiration: null }
+          alerts.set(created.id, created)
+          if (mode === 'lost-write' || mode === 'lost-create-alert') { request.socket.destroy(); return }
+          response.end(JSON.stringify(created)); return
+        }
+        const notifierMutation = /^\/notifier\/([^/]+)$/.exec(url.pathname)
+        if (notifierMutation && request.method === 'DELETE') { notifiers.delete(notifierMutation[1]); response.end('{"success":true}'); return }
+        if (notifierMutation && request.method === 'PUT') {
+          Object.assign(notifiers.get(notifierMutation[1]).args, Object.fromEntries(new URLSearchParams(input)))
+          response.end(JSON.stringify({ id: notifierMutation[1], success: true })); return
+        }
+        if (match && request.method === 'DELETE') {
+          alerts.delete(match[1])
+          if (mode === 'lost-write') { request.socket.destroy(); return }
+          response.end('{"success":true}'); return
+        }
+        if (match && request.method === 'POST') {
+          Object.assign(alerts.get(match[1]), JSON.parse(input))
+          response.end(JSON.stringify(alerts.get(match[1]))); return
+        }
+        const trigger = /^\/shodan\/alert\/([^/]+)\/trigger\/([^/]+)$/.exec(url.pathname)
+        if (trigger) {
+          if (request.method === 'PUT' && mode !== 'trigger-unverified') alerts.get(trigger[1]).triggers[trigger[2]] = {}
+          else delete alerts.get(trigger[1]).triggers[trigger[2]]
+          response.end('{"success":true}'); return
+        }
+        const ignore = /^\/shodan\/alert\/([^/]+)\/trigger\/([^/]+)\/ignore\/([^/]+)(?:\/([^/]+))?$/.exec(url.pathname)
+        if (ignore) { response.end('{"success":true}'); return }
+        const association = /^\/shodan\/alert\/([^/]+)\/notifier\/([^/]+)$/.exec(url.pathname)
+        if (association) {
+          const alert = alerts.get(association[1])
+          if (request.method === 'PUT') alert.notifiers.push(association[2])
+          else alert.notifiers = alert.notifiers.filter(entry => entry !== association[2])
+          response.end('{"success":true}'); return
+        }
+        response.end('{"success":true}'); return
+      }
+      const alertInfo = /^\/shodan\/alert\/([^/]+)\/info$/.exec(url.pathname)
+      if (alertInfo) {
+        const selected = alerts.get(alertInfo[1])
+        if (!selected) { response.writeHead(404); response.end('{}'); return }
+        response.end(JSON.stringify(selected)); return
+      }
+      const notifierInfo = /^\/notifier\/([^/]+)$/.exec(url.pathname)
+      if (notifierInfo && notifierInfo[1] !== 'provider') {
+        const selected = notifiers.get(notifierInfo[1])
+        if (!selected) { response.writeHead(404); response.end('{}'); return }
+        response.end(JSON.stringify(selected)); return
+      }
       if (['/shodan/host/192.0.2.8', '/shodan/host/2001%3Adb8%3A%3A8'].includes(url.pathname)) {
         response.writeHead(mode === 'domain-enrichment-denied' ? 403 : 404)
         response.end('{"error":"host unavailable"}')
@@ -51,6 +113,12 @@ export async function withInvestigation(check) {
         '/api/v1/search/filters': ['all', 'asn', 'has_ipv6'], '/api/v1/search/facets': ['asn', 'country', 'vuln.verified'],
         '/api/search': { total: 1, matches: [{ _id: '2020-0001', source: 'CVE', cve: 'CVE-2020-0001', description: 'x'.repeat(600) }], facets: { source: [{ value: 'CVE', count: 1 }] } },
         '/api/count': { total: 1, facets: { source: [{ value: 'CVE', count: 1 }] } },
+        '/shodan/alert/alert-a/info': { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null },
+        '/shodan/alert/info': [...alerts.values()],
+        '/shodan/alert/triggers': [{ name: 'any', rule: '*', description: 'Any service' }],
+        '/notifier': { matches: [...notifiers.values()], total: notifiers.size },
+        '/notifier/provider': { email: { required: ['to'] }, telegram: { required: ['chat_id', 'token'] } },
+        '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } },
       }
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,

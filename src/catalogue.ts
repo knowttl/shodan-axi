@@ -27,5 +27,11 @@ export const operations = [
   { id: 'OP-056', command: 'trends facets', path: '/api/v1/search/facets', effect: 'read', cost: 'none', acceptance: 'AC-056' },
   { id: 'OP-057', command: 'exploits search', path: '/api/search', effect: 'read', cost: 'unknown', acceptance: 'AC-057', argument: 'query', flags: ['--page', '--facets', '--full'] },
   { id: 'OP-058', command: 'exploits count', path: '/api/count', effect: 'read', cost: 'unknown', acceptance: 'AC-058', argument: 'query', flags: ['--facets'] },
+  { id: 'OP-014', command: 'alert info', path: '/shodan/alert/{id}/info', effect: 'read', cost: 'none', acceptance: 'AC-014', argument: 'id' },
+  { id: 'OP-017', command: 'alert list', path: '/shodan/alert/info', effect: 'read', cost: 'none', acceptance: 'AC-017', flags: ['--expired'] },
+  { id: 'OP-018', command: 'alert triggers', path: '/shodan/alert/triggers', effect: 'read', cost: 'none', acceptance: 'AC-018' },
+  { id: 'OP-025', command: 'notifier list', path: '/notifier', effect: 'read', cost: 'none', acceptance: 'AC-025' },
+  { id: 'OP-026', command: 'notifier providers', path: '/notifier/provider', effect: 'read', cost: 'none', acceptance: 'AC-026' },
+  { id: 'OP-029', command: 'notifier get', path: '/notifier/{id}', effect: 'read', cost: 'none', acceptance: 'AC-029', argument: 'id' },
   { id: 'OP-072', command: 'myip --ipv6', path: '/tools/myip', effect: 'read', cost: 'none', acceptance: 'AC-072' },
 ] as const satisfies readonly ReadOperation[]

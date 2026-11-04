@@ -47,6 +47,7 @@ export function planInvestigation(words: string[], flags: Flags): Investigation 
     if (selected.argument === 'domain' && !validDomain(argument)) fail('Invalid domain')
     if (selected.argument === 'names' && !argument.split(',').every(validDomain)) fail('Invalid hostname list')
     if (selected.argument === 'ips' && !argument.split(',').every(ip => isIP(ip))) fail('Invalid address list')
+    if (selected.argument === 'id' && !/^[A-Za-z0-9_-]{1,128}$/.test(argument)) fail('Invalid identifier')
   }
   const maxRequests = numberOption(flags, '--max-requests', 1, 1000)
   const maxPages = numberOption(flags, '--max-pages', 1, 1000)
@@ -60,6 +61,7 @@ export function planInvestigation(words: string[], flags: Flags): Investigation 
   if (flags.has('--save') && value(flags, '--filename')) fail('Choose --save or --filename')
   if (flags.has('--color') && flags.has('--no-color')) fail('Choose one color option')
   if (value(flags, '--minify') !== undefined && !['true', 'false'].includes(value(flags, '--minify') ?? '')) fail('Minify must be true or false')
+  if (value(flags, '--expired') !== undefined && !['true', 'false'].includes(value(flags, '--expired') ?? '')) fail('Expired must be true or false')
   if (value(flags, '--format') !== undefined && !['pretty', 'tsv'].includes(value(flags, '--format') ?? '')) fail('Format must be pretty or tsv')
   const fields = value(flags, '--fields')
   if (fields !== undefined && !fields.split(',').every(field => /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)*$/.test(field))) fail('Invalid field selection')
@@ -163,7 +165,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
   if (operation.id === 'OP-003' || operation.id === 'OP-040') query.page = String(page)
   if (['OP-031', 'OP-032', 'OP-057'].includes(operation.id)) query.page = String(page)
   if (operation.id === 'OP-040' && query.history === undefined) query.history = 'false'
-  const path = operation.path.replace(/\{(?:ip|domain)\}/, encodeURIComponent(argument ?? ''))
+  const path = operation.path.replace(/\{(?:ip|domain|id)\}/, encodeURIComponent(argument ?? ''))
   const service = operation.id === 'OP-059' ? 'https://internetdb.shodan.io' : operation.id === 'OP-072' ? 'https://apiv6.shodan.io'
     : ['OP-054', 'OP-055', 'OP-056'].includes(operation.id) ? 'https://trends.shodan.io'
       : ['OP-057', 'OP-058'].includes(operation.id) ? 'https://exploits.shodan.io' : origin
@@ -189,6 +191,29 @@ export async function investigate(plan: Investigation, origin: string | undefine
     }
   }
   const raw = await dispatch(path, query, operation.cost !== 'none')
+  if (operation.id === 'OP-014') {
+    const result = parse(z.object({ id: z.string(), name: z.string(), filters: z.object({ ip: z.array(z.string()) }).passthrough() }).passthrough(), raw)
+    if (result.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Alert does not match the selection', 'Retry the selected alert')
+    return Object.fromEntries(Object.entries(result).filter(([name]) => name !== 'notify'))
+  }
+  if (operation.id === 'OP-017' || operation.id === 'OP-018') {
+    const schema = operation.id === 'OP-017' ? z.object({ id: z.string(), name: z.string(), filters: z.object({ ip: z.array(z.string()) }).passthrough(), expiration: z.string().nullable().optional() }).passthrough()
+      : z.object({ name: z.string(), rule: z.string(), description: z.string() }).passthrough()
+    const rows = parse(z.array(schema), raw)
+    const expired = value(flags, '--expired') !== 'false'
+    const items = operation.id === 'OP-017' && !expired ? rows.filter(row => row.expiration === null || (typeof row.expiration === 'string' && Date.parse(row.expiration) > Date.now())) : rows
+    return { items: operation.id === 'OP-017' ? items.map(item => Object.fromEntries(Object.entries(item).filter(([name]) => name !== 'notify'))) : items, count: items.length }
+  }
+  if (operation.id === 'OP-025') {
+    const result = parse(z.object({ matches: z.array(z.object({ id: z.string(), provider: z.string() }).passthrough()), total: z.number().int().nonnegative() }).passthrough(), raw)
+    return { items: result.matches.map(item => ({ id: item.id, provider: item.provider, ...(typeof item.description === 'string' ? { description: item.description } : {}) })), total: result.total, count: result.matches.length }
+  }
+  if (operation.id === 'OP-026') return parse(z.record(z.string(), z.object({ required: z.array(z.string()) }).passthrough()), raw)
+  if (operation.id === 'OP-029') {
+    const result = parse(z.object({ id: z.string(), provider: z.string() }).passthrough(), raw)
+    if (result.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Notifier does not match the selection', 'Retry the selected notifier')
+    return { id: result.id, provider: result.provider, ...(typeof result.description === 'string' ? { description: result.description } : {}) }
+  }
   if (['OP-031', 'OP-032', 'OP-033'].includes(operation.id)) {
     const item = operation.id === 'OP-033' ? z.object({ value: z.string(), count: z.number().int().nonnegative() }).passthrough()
       : z.object({ title: z.string(), query: z.string() }).passthrough()

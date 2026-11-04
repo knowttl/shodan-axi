@@ -24,9 +24,15 @@ Honeyscore and services remain source-only and unverified.
 Trends and Exploits access and redirect behavior remain unverified against live services; `trends <query>`, `exploits search` and `exploits count` are unknown-cost reads.
 For native Trends exports, choose `--save` for a query-derived filename or `--filename <path>` for an explicit destination.
 Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
-The tool does not run scans or change account settings in this slice.
+Alert and notifier reads and writes are available through the native CLI.
+Writes require an exact operation grant, unknown-cost acceptance and request and credit bounds.
+Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
+Plans bind the selected profile, credential, input, effects and observed state; uncertain sends are never automatically retried.
+Notifier creation and updates use a private absolute `--body-file` containing JSON with an `args` object; creation also requires a provider.
+Hosted use admits the free alert and notifier reads and refuses all writes before retrieving credentials.
+Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B2.2 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.1 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.

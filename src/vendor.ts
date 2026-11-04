@@ -5,13 +5,13 @@ import { ToolError } from './errors.js'
 const info = z.object({ plan: z.string(), query_credits: z.number(), scan_credits: z.number(), monitored_ips: z.number(), usage_limits: z.object({ query_credits: z.number(), scan_credits: z.number(), monitored_ips: z.number() }).passthrough() }).passthrough()
 const account = z.object({ member: z.boolean(), credits: z.number(), display_name: z.string().nullable(), created: z.string() }).passthrough()
 
-export async function requestJson(origin: string, path: string, key: string | undefined, query: Readonly<Record<string, string>> = {}, maxBytes = 10 * 1024 * 1024, timeout = 30000, allowText = false, family?: 4 | 6): Promise<unknown> {
+export async function requestJson(origin: string, path: string, key: string | undefined, query: Readonly<Record<string, string>> = {}, maxBytes = 10 * 1024 * 1024, timeout = 30000, allowText = false, family?: 4 | 6, mutation?: { method: 'POST' | 'PUT' | 'DELETE'; body?: string; contentType?: string }): Promise<unknown> {
   const url = new URL(path, origin)
   if (key !== undefined) url.searchParams.set('key', key)
   for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value)
   let timer: ReturnType<typeof setTimeout> | undefined
   const bytes = await new Promise<Buffer>((resolve, reject) => {
-    const req = request(url, { method: 'GET', ...(family ? { family } : {}) }, response => {
+    const req = request(url, { method: mutation?.method ?? 'GET', ...(family ? { family } : {}), ...(mutation?.contentType ? { headers: { 'Content-Type': mutation.contentType } } : {}) }, response => {
       if (response.statusCode !== 200) {
         response.destroy()
         req.destroy()
@@ -31,7 +31,7 @@ export async function requestJson(origin: string, path: string, key: string | un
     })
     timer = setTimeout(() => { req.destroy(new Error('timeout')) }, timeout)
     req.on('error', reject)
-    req.end()
+    req.end(mutation?.body)
   }).finally(() => { clearTimeout(timer) }).catch((error: unknown) => {
     if (error instanceof ToolError) throw error
     throw new ToolError('UPSTREAM_ERROR', 'Request could not be completed', 'Check connectivity and retry later')
