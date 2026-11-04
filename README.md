@@ -25,6 +25,13 @@ Trends and Exploits access and redirect behavior remain unverified against live 
 For native Trends exports, choose `--save` for a query-derived filename or `--filename <path>` for an explicit destination.
 Exports append gzip-compressed JSON lines with one record per month and nested facets; filenames end in `.json.gz`, and query-derived filenames replace spaces, `/` and `\` with `-` and end in `-trends.json.gz`.
 Alert and notifier reads and writes are available through the native CLI.
+`parse <file>...` filters local JSON or gzip-compressed JSONL with repeated `--filters`, projects dotted `--fields`, and supports a custom `--separator`.
+`convert <file> <format>` produces CSV, KML, GeoJSON (`geo.json`), XLSX or extracted JPEG images without credentials or network access.
+Inputs are bounded to 1 MiB compressed and 10 MiB decompressed; outputs use private paths and existing conversion outputs are not overwritten.
+`alert export` saves secret-free alert configuration as gzip JSONL.
+`alert stats` normalizes overlapping networks and labels top-facet results partial; `--exact` requires an OP-003 grant, a query-credit budget and bounded enumeration.
+Partial statistics saved to a file use a `.partial` suffix.
+Hosted upload and file-based transformations are deferred pending a defined upload boundary.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
 The native `geonet ping`, `geonet geoping`, `geonet dns` and `geonet geodns` commands perform active probes without an API key.
 Ping commands take an IP address; DNS commands take a hostname and accept `--type <record-type>` (default `A`).
@@ -65,7 +72,7 @@ GeoNet contacts `https://geonet.shodan.io` independently of profile configuratio
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B3.4 --paths native,artium --offline --with-dependencies`.
+For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B4.1 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.

@@ -225,7 +225,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeHistoryCredentials)
         }
       }
-      if (['B3.1', 'B3.2', 'B3.3', 'B3.4'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.1', 'B3.2', 'B3.3', 'B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['alert', 'info', 'alert-a'])).id, 'alert-a')
         assert.equal((await read(['alert', 'list'])).items[0].id, 'alert-a')
         assert.equal((await read(['alert', 'triggers'])).items[0].rule, '*')
@@ -251,7 +251,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           }
         }
       }
-      if (['B3.2', 'B3.3', 'B3.4'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.2', 'B3.3', 'B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const info = await read(['org', 'info'])
         assert.equal(info.members[0].email, 'existing@example.test')
         assert.equal(Object.hasOwn(info, 'api_key'), false)
@@ -267,7 +267,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
-      if (['B3.3', 'B3.4'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.3', 'B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         assert.equal((await read(['scan', 'protocols'])).https, 'Synthetic HTTPS module')
         const list = await read(['scan', 'list'])
         assert.equal(list.items[0].id, 'scan-a')
@@ -285,7 +285,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
           assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
-      if (process.env.SHODAN_TEST_SLICE === 'B3.4' || !process.env.SHODAN_TEST_SLICE) {
+      if (['B3.4', 'B4.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
         const before = requests.length; const beforeCredentials = credentialReads
         for (const [command, target, operation] of [
           ['ping', '192.0.2.7', 'OP-060'], ['geoping', '192.0.2.7', 'OP-061'],
@@ -296,6 +296,22 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
             assert.equal(requests.length, before, command)
             assert.equal(credentialReads, beforeCredentials, command)
           }
+        }
+      }
+      if (process.env.SHODAN_TEST_SLICE === 'B4.1' || !process.env.SHODAN_TEST_SLICE) {
+        const stats = await read(['alert', 'stats'])
+        assert.equal(stats.complete, false)
+        assert.equal(stats.aggregation, 'partial')
+        const before = requests.length; const beforeCredentials = credentialReads
+        for (const args of [
+          ['parse', 'input.json.gz'], ['parse', '/tmp/input.json.gz', '--filename', '/tmp/result.json.gz'],
+          ['convert', 'input.json.gz', 'csv'], ['convert', '/tmp/input.json.gz', 'xlsx', '--filename', '/tmp/result.xlsx'],
+          ['alert', 'export', '--filename', '/tmp/alerts.json.gz'],
+          ['alert', 'stats', '--exact', '--allow-operation', 'OP-003', '--query-credit-budget', '1', '--max-requests', '2'],
+        ]) {
+          assert.notEqual((await run(args)).code, 0)
+          assert.equal(requests.length, before, JSON.stringify(args))
+          assert.equal(credentialReads, beforeCredentials, JSON.stringify(args))
         }
       }
       store.replaceCredential('shodan-axi', { auth: 'none', origin: 'https://api.shodan.io' }, 1, 'synthetic-development-user', Date.now())

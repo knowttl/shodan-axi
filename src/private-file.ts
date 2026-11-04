@@ -41,7 +41,7 @@ export async function readPrivate(path: string, secret: boolean, options: Option
   return (await readPrivateBytes(path, secret, options)).toString('utf8')
 }
 
-export async function writePrivate(path: string, content: string, options: Options = {}): Promise<void> {
+export async function writePrivate(path: string, content: string | Uint8Array, options: Options = {}): Promise<void> {
   const platform = options.platform ?? process.platform
   const acl = options.acl ?? windowsAcl
   if (!isAbsolute(path) || (process.platform === 'win32' && !/^[A-Za-z]:[\\/]/.test(path))) insecure()

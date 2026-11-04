@@ -1,8 +1,11 @@
 import { encode } from '@toon-format/toon'
 import { homedir } from 'node:os'
+import { z } from 'zod'
 import { configPath, putProfile, readConfig, secret, select } from './credentials.js'
+import { alertEvidence, validateAlertEvidence } from './alert-evidence.js'
 import { description, nextSteps } from './discovery.js'
 import { ToolError } from './errors.js'
+import { evidence } from './evidence.js'
 import { geonet } from './geonet.js'
 import { investigate, planInvestigation } from './investigation.js'
 import { draftClear, draftDomain, draftImport, draftMutation, isMutation, mutate, validateMutationFlags } from './mutations.js'
@@ -10,7 +13,7 @@ import { readPrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { read } from './vendor.js'
 
-const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns'
+const usage = 'Commands: info, account profile, doctor, auth status, profile list, profile set, init, config path, host, count, stats, search, search facets, search filters, search tokens, ports, domain, dns resolve, dns reverse, tools headers, myip, internetdb host, honeyscore, services, query list, query search, query tags, trends, trends filters, trends facets, exploits search, exploits count, alert info, alert list, alert triggers, alert create, alert update, alert remove, alert enable, alert disable, alert ignore, alert unignore, alert notifier add, alert notifier remove, alert clear, alert domain, alert import, alert export, alert stats, notifier list, notifier providers, notifier get, notifier create, notifier update, notifier remove, org info, org add, org remove, scan protocols, scan list, scan status, scan submit, scan internet, geonet ping, geonet geoping, geonet dns, geonet geodns, parse, convert'
 const help: Record<string, string> = {
   '': usage,
   info: 'info [--profile <name>] [--config <absolute-path>] [--json] - inspect plan and credits',
@@ -29,15 +32,15 @@ export async function main(args: string[]): Promise<void> {
   try {
     const flags = new Map<string, string | boolean>()
     const words: string[] = []
-    const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename' }
-    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force']
-    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers']
+    const aliases: Record<string, string> = { '-6': '--ipv6', '-H': '--history', '-T': '--type', '-D': '--details', '-S': '--save', '-O': '--filename', '-f': '--filters' }
+    const booleanFlags = ['--json', '--help', '--history', '--details', '--save', '--full', '--color', '--no-color', '--ipv6', '--accept-unknown-cost', '--execute', '--silent', '--force', '--exact']
+    const valueFlags = ['--config', '--profile', '--env', '--file', '--output', '--page', '--offset', '--limit', '--max-pages', '--max-bytes', '--timeout', '--max-requests', '--query-credit-budget', '--scan-credit-budget', '--poll-attempts', '--poll-interval-ms', '--allow-operation', '--fields', '--filters', '--facets', '--type', '--minify', '--filename', '--format', '--separator', '--sort', '--order', '--size', '--expired', '--confirm', '--body-file', '--expires', '--vulns', '--triggers']
     for (let index = 0; index < args.length; index++) {
       const input = args[index]
       if (!input) continue
       const arg = aliases[input] ?? input
       if (!arg.startsWith('-')) { words.push(arg); continue }
-      if (![...booleanFlags, ...valueFlags].includes(arg) || flags.has(arg)) {
+      if (![...booleanFlags, ...valueFlags].includes(arg) || (flags.has(arg) && arg !== '--filters')) {
         const flag = /^--[a-z][a-z0-9-]*$/.test(arg) ? arg : 'flag'
         throw new ToolError('INVALID_INPUT', `Unknown or repeated ${flag}`, 'Valid flags: --help, --json, --config, --profile; profile setup also accepts --env or --file')
       }
@@ -45,7 +48,11 @@ export async function main(args: string[]): Promise<void> {
       else {
         const value = args[++index]
         if (!value || value.startsWith('--')) throw new ToolError('INVALID_INPUT', `Missing value for ${arg}`, usage)
-        flags.set(arg, value)
+        if (arg === '--filters') {
+          const previous = flags.get(arg)
+          const filters = typeof previous === 'string' ? z.array(z.string()).parse(JSON.parse(previous)) : []
+          flags.set(arg, JSON.stringify([...filters, value]))
+        } else flags.set(arg, value)
       }
     }
     const outputFormat = flags.get('--output')
@@ -55,6 +62,20 @@ export async function main(args: string[]): Promise<void> {
     if (readOnly && !/^(?:true|false|1|0)$/i.test(readOnly)) throw new ToolError('CONFIG_INVALID', 'Invalid read-only setting', 'Set SHODAN_AXI_READ_ONLY to true or false')
     const option = (flag: string): string | undefined => { const value = flags.get(flag); return typeof value === 'string' ? value : undefined }
     const command = words.join(' ')
+    if (words[0] === 'parse' || words[0] === 'convert') {
+      const result = await evidence(words, flags)
+      if (!json && result && typeof result === 'object' && 'display' in result && typeof result.display === 'string') process.stdout.write(`${result.display}\n`)
+      else output(result, json)
+      return
+    }
+    if (words[0] === 'alert' && ['stats', 'export'].includes(words[1] ?? '')) {
+      validateAlertEvidence(words, flags)
+      if (flags.has('--help')) { output({ command, help: 'Use --filename for a private output. Exact statistics require --exact, --allow-operation OP-003 and an explicit query-credit budget.' }, json); return }
+      const selection = await select(configPath(option('--config')), option('--profile'))
+      key = await secret(selection)
+      output(clean(await alertEvidence(words, flags, selection, key), key), json)
+      return
+    }
     if (words[0] === 'geonet') {
       const result = await geonet(words, flags)
       if (result && typeof result === 'object' && 'error' in result) process.exitCode = 1

@@ -3,11 +3,15 @@ import { operations } from '../dist/catalogue.js'
 import { probes } from '../dist/geonet.js'
 import { mutations } from '../dist/mutation-catalogue.js'
 import { description, nextSteps } from '../dist/discovery.js'
-import { hostedReadOutputs, statsOutput, homeOutput, doctorOutput } from '../dist/contracts.js'
+import { hostedReadOutputs, statsOutput, homeOutput, doctorOutput, alertExportOutput, alertStatsOutput } from '../dist/contracts.js'
 import { z } from 'zod'
 
 const target = new URL('../command-inventory.json', import.meta.url)
 const commands = [
+  { command: 'parse', effect: 'local', flags: ['--json', '--output', '--help', '--fields', '--filters', '--filename', '--separator', '--color', '--no-color'], arguments: [{ name: 'file', variadic: true }] },
+  { command: 'convert', effect: 'local', flags: ['--json', '--output', '--help', '--fields', '--filename'], arguments: [{ name: 'file' }, { name: 'format' }] },
+  { command: 'alert export', operation: 'CLI-021', effect: 'read', cost: 'none', flags: ['--json', '--output', '--help', '--config', '--profile', '--filename', '--max-requests'], arguments: [], outputSchema: z.toJSONSchema(alertExportOutput) },
+  { command: 'alert stats', operation: 'CLI-025', effect: 'read', cost: 'none', variantCosts: [{ flags: ['--exact'], operation: 'OP-003', cost: 'query' }], flags: ['--json', '--output', '--help', '--config', '--profile', '--filename', '--max-requests', '--facets', '--limit', '--exact', '--allow-operation', '--query-credit-budget', '--max-pages', '--max-bytes'], arguments: [], outputSchema: z.toJSONSchema(alertStatsOutput) },
   ...probes.map(({ command, id, argument }) => ({ command, operation: id, effect: 'active', cost: 'none', auth: 'none', flags: ['--json', '--output', '--help', '--allow-operation', '--max-requests', '--execute', '--confirm', ...(argument === 'hostname' ? ['--type'] : [])], arguments: [{ name: argument }] })),
   ...operations.map(({ command, id, effect, cost, flags = [], argument }) => ({ command, operation: id, effect, cost,
     flags: ['--json', '--output', '--help', ...(id === 'OP-059' ? [] : ['--config', '--profile']),
