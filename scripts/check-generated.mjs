@@ -2,6 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { operations } from '../dist/catalogue.js'
 import { mutations } from '../dist/mutation-catalogue.js'
 import { description, nextSteps } from '../dist/discovery.js'
+import { scanReadOutputs } from '../dist/contracts.js'
+import { z } from 'zod'
 
 const target = new URL('../command-inventory.json', import.meta.url)
 const commands = [
@@ -9,7 +11,8 @@ const commands = [
     flags: ['--json', '--output', '--help', ...(id === 'OP-059' ? [] : ['--config', '--profile']),
       ...(['OP-039', 'OP-045'].includes(id) ? [] : ['--max-requests', '--max-bytes', '--timeout']),
       ...(cost === 'none' ? [] : ['--allow-operation', '--query-credit-budget']), ...(cost === 'unknown' ? ['--accept-unknown-cost'] : []), ...flags],
-    arguments: argument ? [{ name: argument }] : [] })),
+    arguments: argument ? [{ name: argument }] : [],
+    ...(scanReadOutputs[id] ? { outputSchema: z.toJSONSchema(scanReadOutputs[id]) } : {}) })),
   ...mutations.map(({ command, id, effect, cost, arguments: args }) => ({ command, operation: id, effect, cost,
     flags: ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', ...(['OP-009', 'OP-010'].includes(id) ? ['--scan-credit-budget'] : ['--query-credit-budget']), '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', ...(id === 'OP-009' ? ['--force'] : []), ...(id === 'OP-013' ? ['--expires'] : []), ...(['OP-021', 'OP-070'].includes(id) ? ['--vulns'] : []), ...(['OP-027', 'OP-030'].includes(id) ? ['--body-file'] : []), ...(id === 'OP-037' ? ['--silent'] : [])],
     arguments: args.map(name => ({ name })) })),

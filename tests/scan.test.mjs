@@ -1,19 +1,32 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { readFile } from 'node:fs/promises'
 import { withInvestigation } from './investigation-fixture.mjs'
+
+test('published scan job output schemas are closed at every object boundary', async () => {
+  const inventory = JSON.parse(await readFile(new URL('../command-inventory.json', import.meta.url), 'utf8'))
+  const list = inventory.commands.find(command => command.command === 'scan list').outputSchema
+  const status = inventory.commands.find(command => command.command === 'scan status').outputSchema
+  assert.ok(list, 'scan list must publish its output schema')
+  assert.ok(status, 'scan status must publish its output schema')
+  assert.equal(list.additionalProperties, false)
+  assert.deepEqual(Object.keys(list.properties).sort(), ['complete', 'items', 'pagination', 'total'])
+  assert.equal(list.properties.items.items.additionalProperties, false)
+  assert.deepEqual(Object.keys(list.properties.items.items.properties).sort(), ['created', 'credits_left', 'id', 'size', 'status', 'status_check'])
+  assert.deepEqual(list.properties.items.items.required.sort(), ['id', 'status'])
+  assert.equal(status.additionalProperties, false)
+  assert.deepEqual(Object.keys(status.properties).sort(), ['count', 'created', 'error', 'id', 'polling', 'status'])
+  assert.deepEqual(status.required.sort(), ['id', 'polling', 'status'])
+})
 
 test('scan reads preserve job identity and disclose incomplete list scope', { timeout: 30000 }, async () => {
   await withInvestigation(async ({ run, calls }) => {
     assert.equal((await run(['scan', 'protocols'])).body.https, 'Synthetic HTTPS module')
     const list = await run(['scan', 'list'])
-    assert.equal(list.body.items[0].id, 'scan-a')
-    assert.equal(list.body.complete, false)
-    assert.equal(list.body.pagination, 'undocumented')
+    assert.deepEqual(list.body, { items: [{ id: 'scan-a', status: 'PROCESSING', created: '2026-01-01', status_check: '2026-01-02', credits_left: 98, size: 2 }], total: 2, complete: false, pagination: 'undocumented' })
     assert.doesNotMatch(list.stdout, /issued-secret|api_key/)
     const status = await run(['scan', 'status', 'scan-a', '--poll-attempts', '2', '--poll-interval-ms', '0', '--max-requests', '2'])
-    assert.equal(status.body.id, 'scan-a')
-    assert.equal(status.body.status, 'PROCESSING')
-    assert.equal(status.body.polling, 'attempt-limit')
+    assert.deepEqual(status.body, { id: 'scan-a', status: 'PROCESSING', count: 2, created: '2026-01-01', polling: 'attempt-limit' })
     assert.equal(calls.filter(call => call.path === '/shodan/scan/scan-a').length, 2)
     assert.doesNotMatch(status.stdout, /issued-secret|api_key/)
     assert.equal((await run(['scan', 'list', '--page', '2'])).body.error, 'INVALID_INPUT')

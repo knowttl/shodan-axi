@@ -9,6 +9,7 @@ import { ToolError } from './errors.js'
 import { clean } from './redact.js'
 import { requestJson } from './vendor.js'
 import { windowsAcl } from './windows-acl.js'
+import { scanListItem, scanJob } from './contracts.js'
 
 export type Flags = Map<string, string | boolean>
 export type Investigation = { operation: ReadOperation; argument?: string; flags: Flags; maxRequests: number; queryBudget: number; maxPages: number; maxBytes: number; timeout: number }
@@ -196,13 +197,11 @@ export async function investigate(plan: Investigation, origin: string | undefine
   const raw = await dispatch(path, query, operation.cost !== 'none')
   if (operation.id === 'OP-008') return parse(z.record(z.string(), z.string()), raw)
   if (operation.id === 'OP-011') {
-    const item = z.object({ id: z.string(), status: z.string(), created: z.string().optional(), status_check: z.string().optional(), credits_left: z.number().optional(), size: z.number().optional() })
-    const result = parse(z.object({ matches: z.array(item), total: z.number().int().nonnegative() }), raw)
+    const result = parse(z.object({ matches: z.array(scanListItem), total: z.number().int().nonnegative() }), raw)
     return { items: result.matches, total: result.total, pagination: 'undocumented', complete: result.matches.length >= result.total }
   }
   if (operation.id === 'OP-012') {
-    const schema = z.object({ id: z.string(), status: z.string(), count: z.number().int().nonnegative().optional(), created: z.string().optional() })
-    let result = parse(schema, raw)
+    let result = parse(scanJob, raw)
     if (result.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Scan does not match the selection', 'Retry the selected scan')
     const attempts = numberOption(flags, '--poll-attempts', 1, 100)
     const interval = numberOption(flags, '--poll-interval-ms', 1000, 30000)
@@ -210,7 +209,7 @@ export async function investigate(plan: Investigation, origin: string | undefine
       if (Date.now() + interval >= deadline) return { ...result, polling: 'timeout' }
       await new Promise(resolve => setTimeout(resolve, interval))
       try {
-        const next = parse(schema, await dispatch(path, {}, false))
+        const next = parse(scanJob, await dispatch(path, {}, false))
         if (next.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Scan does not match the selection', 'Retry the selected scan')
         result = next
       } catch (error) {

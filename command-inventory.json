@@ -237,7 +237,63 @@
         "--max-bytes",
         "--timeout"
       ],
-      "arguments": []
+      "arguments": [],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "created": {
+                  "type": "string"
+                },
+                "status_check": {
+                  "type": "string"
+                },
+                "credits_left": {
+                  "type": "number"
+                },
+                "size": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "id",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "pagination": {
+            "type": "string",
+            "const": "undocumented"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "pagination",
+          "complete"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "scan status",
@@ -260,7 +316,45 @@
         {
           "name": "id"
         }
-      ]
+      ],
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "created": {
+            "type": "string"
+          },
+          "polling": {
+            "type": "string",
+            "enum": [
+              "timeout",
+              "error",
+              "complete",
+              "attempt-limit"
+            ]
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "polling"
+        ],
+        "additionalProperties": false
+      }
     },
     {
       "command": "domain",

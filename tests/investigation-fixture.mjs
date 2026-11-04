@@ -156,8 +156,8 @@ export async function withInvestigation(check) {
         '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } },
         '/org': organization,
         '/shodan/protocols': { https: 'Synthetic HTTPS module' },
-        '/shodan/scans': { matches: [{ id: 'scan-a', status: 'PROCESSING', api_key: 'issued-secret' }], total: 2 },
-        '/shodan/scan/scan-a': { id: 'scan-a', status: 'PROCESSING', count: 2, created: '2026-01-01', api_key: 'issued-secret' },
+        '/shodan/scans': { matches: [{ id: 'scan-a', status: 'PROCESSING', created: '2026-01-01', status_check: '2026-01-02', credits_left: 98, size: 2, api_key: 'issued-secret', access_token: 'private-token', unknown: { nested: 'private-value' } }], total: 2, unknown: 'private-envelope', password: 'private-password' },
+        '/shodan/scan/scan-a': { id: 'scan-a', status: 'PROCESSING', count: 2, created: '2026-01-01', api_key: 'issued-secret', access_token: 'private-token', unknown: { nested: 'private-value' } },
       }
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
