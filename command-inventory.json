@@ -661,6 +661,23 @@
       ]
     },
     {
+      "command": "org info",
+      "operation": "OP-036",
+      "effect": "read",
+      "cost": "none",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--max-requests",
+        "--max-bytes",
+        "--timeout"
+      ],
+      "arguments": []
+    },
+    {
       "command": "myip --ipv6",
       "operation": "OP-072",
       "effect": "read",
@@ -992,6 +1009,55 @@
       "arguments": [
         {
           "name": "id"
+        }
+      ]
+    },
+    {
+      "command": "org add",
+      "operation": "OP-037",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm",
+        "--silent"
+      ],
+      "arguments": [
+        {
+          "name": "user"
+        }
+      ]
+    },
+    {
+      "command": "org remove",
+      "operation": "OP-038",
+      "effect": "write",
+      "cost": "unknown",
+      "flags": [
+        "--json",
+        "--output",
+        "--help",
+        "--config",
+        "--profile",
+        "--allow-operation",
+        "--query-credit-budget",
+        "--max-requests",
+        "--accept-unknown-cost",
+        "--execute",
+        "--confirm"
+      ],
+      "arguments": [
+        {
+          "name": "user"
         }
       ]
     },

@@ -191,6 +191,10 @@ export async function investigate(plan: Investigation, origin: string | undefine
     }
   }
   const raw = await dispatch(path, query, operation.cost !== 'none')
+  if (operation.id === 'OP-036') {
+    const member = z.object({ username: z.string(), email: z.string() })
+    return parse(z.object({ id: z.string(), name: z.string(), created: z.string().optional(), admins: z.array(member), members: z.array(member), upgrade_type: z.string().optional(), domains: z.array(z.string()), logo: z.boolean() }), raw)
+  }
   if (operation.id === 'OP-014') {
     const result = parse(z.object({ id: z.string(), name: z.string(), filters: z.object({ ip: z.array(z.string()) }).passthrough() }).passthrough(), raw)
     if (result.id !== argument) throw new ToolError('INVALID_RESPONSE', 'Alert does not match the selection', 'Retry the selected alert')

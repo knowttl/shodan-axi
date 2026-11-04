@@ -13,5 +13,7 @@ export const mutations = [
   { id: 'OP-027', command: 'notifier create', arguments: [], effect: 'write', cost: 'unknown', acceptance: 'AC-027' },
   { id: 'OP-028', command: 'notifier remove', arguments: ['id'], effect: 'write', cost: 'unknown', acceptance: 'AC-028' },
   { id: 'OP-030', command: 'notifier update', arguments: ['id'], effect: 'write', cost: 'unknown', acceptance: 'AC-030' },
+  { id: 'OP-037', command: 'org add', arguments: ['user'], effect: 'write', cost: 'unknown', acceptance: 'AC-037' },
+  { id: 'OP-038', command: 'org remove', arguments: ['user'], effect: 'write', cost: 'unknown', acceptance: 'AC-038' },
   { id: 'OP-070', command: 'alert ignore', arguments: ['id', 'trigger', 'service'], effect: 'write', cost: 'unknown', acceptance: 'AC-070' },
 ] as const satisfies readonly MutationOperation[]
