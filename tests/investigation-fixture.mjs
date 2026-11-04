@@ -267,13 +267,13 @@ export async function withInvestigation(check) {
         resolve({ code, stdout, stderr, body })
       })
     })
-    const runInteractive = args => new Promise((resolve, reject) => {
+    const runInteractive = (args, input = 'q') => new Promise((resolve, reject) => {
       const quote = text => `'${text.replaceAll("'", "'\\''")}'`
       const child = spawn('script', ['-q', '-c', [executable, ...args].map(quote).join(' '), '/dev/null'], { cwd: root, env, signal: AbortSignal.timeout(10000) })
       let stdout = ''; let sent = false
       child.stdout.setEncoding('utf8').on('data', chunk => {
         stdout += chunk
-        if (!sent && stdout.includes('Press q to stop')) { sent = true; child.stdin.write('q') }
+        if (!sent && stdout.includes('Press q to stop')) { sent = true; child.stdin.write(input) }
       })
       child.on('error', reject)
       child.on('close', code => { resolve({ code, stdout }) })
@@ -297,7 +297,7 @@ export async function withInvestigation(check) {
         close: () => { channel.end() },
       }
     }
-    await check({ root, calls, run, runInteractive, launchWorker, setMode: value => { mode = value } })
+    await check({ root, calls, run, runInteractive, launchWorker, server, setMode: value => { mode = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })

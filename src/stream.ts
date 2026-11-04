@@ -130,7 +130,7 @@ async function readStream(draft: StreamDraft, origin: string, key: string, textO
   })
   const cancelled = (): void => { stop('cancelled') }
   const interactive = Boolean(radar && textOutput && process.stdin.isTTY && process.stderr.isTTY)
-  const onInput = (chunk: Buffer): void => { if (chunk.includes(0x71)) stop('cancelled') }
+  const onInput = (chunk: Buffer): void => { if (chunk.includes(0x71) || chunk.includes(0x03)) cancelled() }
   if (interactive) { process.stdin.setRawMode(true); process.stdin.resume(); process.stdin.on('data', onInput) }
   process.once('SIGINT', cancelled); process.once('SIGTERM', cancelled)
   try {
@@ -195,6 +195,8 @@ async function readStream(draft: StreamDraft, origin: string, key: string, textO
   if (reason !== 'max-events' && (pending.toString('utf8').trim() || sseData.length)) partialRecordCount = 1
   const map = radar?.snapshot()
   let artifact
-  if (map && draft.radar?.filename) artifact = await save(draft.radar.filename, Buffer.from(`${JSON.stringify(map)}\n`))
+  if (map && draft.radar?.filename) {
+    try { artifact = await save(draft.radar.filename, Buffer.from(`${JSON.stringify(map)}\n`)) } catch { failure = storageFailure(); reason = 'storage-error' }
+  }
   return { operation: draft.operation, limit: draft.limit, maxBytes: draft.maxBytes, timeout: draft.timeout, idleTimeout: draft.idleTimeout, events, count, debugDiscarded, partialRecordCount, stopReason: reason, bytes, upstreamConnections, ...(map ? { radar: map } : {}), ...(artifact ? { saved: artifact } : {}), ...(failure ? { error: failure.code, message: failure.message, help: failure.help } : {}), ...(threat ? { domainSchemaValidated: false, contractStatus: 'source-only-unverified' } : {}) }
 }
