@@ -275,7 +275,7 @@ export async function withInvestigation(check) {
     })
     const runInteractive = (args, input = 'q') => new Promise((resolve, reject) => {
       const quote = text => `'${text.replaceAll("'", "'\\''")}'`
-      const child = spawn('script', ['-q', '-c', [executable, ...args].map(quote).join(' '), '/dev/null'], { cwd: root, env, signal: AbortSignal.timeout(10000) })
+      const child = spawn('script', ['-q', '-c', `stty rows 24 cols 80 && exec ${[executable, ...args].map(quote).join(' ')}`, '/dev/null'], { cwd: root, env, signal: AbortSignal.timeout(10000) })
       let stdout = ''; let sent = false
       child.stdout.setEncoding('utf8').on('data', chunk => {
         stdout += chunk

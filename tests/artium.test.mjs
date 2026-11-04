@@ -136,10 +136,11 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     const home = await run([])
     assert.equal(JSON.parse(home.stdout).account.query_credits, 20)
     assert.equal(requests.length, 4)
+    const packageVersion = JSON.parse(await readFile(join(manifest.installedPackage, 'package.json'), 'utf8')).version
     for (const alias of ['version', '--version', '-v', '-V']) {
       const version = await run([alias], false)
       assert.equal(version.code, 0, version.stdout + version.stderr)
-      assert.equal(version.stdout, `${packed[0].version}\n`)
+      assert.equal(version.stdout, `${packageVersion}\n`)
     }
     assert.equal(requests.length, 4)
     if (process.env.SHODAN_TEST_SLICE !== 'B1.1') {
