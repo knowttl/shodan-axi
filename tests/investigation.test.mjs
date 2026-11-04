@@ -27,8 +27,8 @@ test('redaction preserves public result keys across output and artifacts', { tim
     assert.equal(JSON.parse(enriched.trim().split('\n')[0]).ssl.cert.pubkey.bits, 2048)
     assert.doesNotMatch(enriched, /fake-secret/)
     const headers = await run(['tools', 'headers'])
-    assert.equal(headers.body.Authorization, '[REDACTED]')
-    assert.equal(headers.body['Proxy-Authorization'], '[REDACTED]')
+    assert.equal(Object.hasOwn(headers.body, 'Authorization'), false)
+    assert.equal(Object.hasOwn(headers.body, 'Proxy-Authorization'), false)
   })
 })
 

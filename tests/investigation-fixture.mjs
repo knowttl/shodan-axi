@@ -15,6 +15,11 @@ export async function withInvestigation(check) {
     const { keyFile, certFile } = await createTestTls(root, 'IP:127.0.0.1')
     const calls = []
     let mode = 'normal'
+    const inject = value => {
+      if (mode !== 'hosted-injection' || value === null || typeof value !== 'object') return value
+      if (Array.isArray(value)) return value.map(inject)
+      return { ...Object.fromEntries(Object.entries(value).map(([name, item]) => [name, inject(item)])), unknown_vendor: 'injected-private', access_token: 'injected-private' }
+    }
     const alerts = new Map([['alert-a', { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null }]])
     const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } }]])
     const organization = { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }, { username: 'other', email: 'other@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' }
@@ -23,6 +28,7 @@ export async function withInvestigation(check) {
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (mode === 'scan-poll-failure' && url.pathname === '/shodan/scan/scan-a' && calls.filter(call => call.path === url.pathname).length > 1) { response.writeHead(503); response.end('{}'); return }
       if (mode === 'denied') { response.writeHead(403); response.end('{"error":"denied"}'); return }
       if (mode === 'redirect') { response.writeHead(301, { location: 'https://invalid.example/' }); response.end(); return }
       if (mode === 'malformed') { response.end('{broken'); return }
@@ -33,6 +39,11 @@ export async function withInvestigation(check) {
         for await (const chunk of request) chunks.push(chunk)
         const input = Buffer.concat(chunks).toString()
         calls.at(-1).body = input
+        if (request.method === 'POST' && ['/shodan/scan', '/shodan/scan/internet'].includes(url.pathname)) {
+          if (mode === 'lost-write') { request.socket.destroy(); return }
+          if (mode === 'scan-rejected') { response.end('{"id":"scan-a","count":2,"credits_left":98,"error":"rejected"}'); return }
+          response.end(url.pathname === '/shodan/scan' ? '{"id":"scan-a","count":2,"credits_left":98}' : '{"id":"scan-internet"}'); return
+        }
         const orgMember = /^\/org\/member\/([^/]+)$/.exec(url.pathname)
         if (orgMember) {
           const email = decodeURIComponent(orgMember[1])
@@ -103,7 +114,7 @@ export async function withInvestigation(check) {
           'alert-expiration-too-long': { expiration: new Date(Date.now() + 120000).toISOString() },
           'alert-expiration-missing': { expiration: undefined },
         }
-        response.end(JSON.stringify({ ...selected, ...changes[mode] })); return
+        response.end(JSON.stringify(inject({ ...selected, ...changes[mode] }))); return
       }
       const notifierInfo = /^\/notifier\/([^/]+)$/.exec(url.pathname)
       if (notifierInfo && notifierInfo[1] !== 'provider') {
@@ -115,7 +126,7 @@ export async function withInvestigation(check) {
           'notifier-args-mismatch': { args: { to: 'other@example.test' } },
           'notifier-args-missing': { args: undefined },
         }
-        response.end(JSON.stringify({ ...selected, ...changes[mode] })); return
+        response.end(JSON.stringify(inject({ ...selected, ...changes[mode] }))); return
       }
       if (['/shodan/host/192.0.2.8', '/shodan/host/2001%3Adb8%3A%3A8'].includes(url.pathname)) {
         response.writeHead(mode === 'domain-enrichment-denied' ? 403 : 404)
@@ -149,10 +160,14 @@ export async function withInvestigation(check) {
         '/notifier/provider': { email: { required: ['to'] }, telegram: { required: ['chat_id', 'token'] } },
         '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } },
         '/org': organization,
+        '/shodan/protocols': { https: 'Synthetic HTTPS module' },
+        '/shodan/scans': { matches: [{ id: 'scan-a', status: 'PROCESSING', created: '2026-01-01', status_check: '2026-01-02', credits_left: 98, size: 2, api_key: 'issued-secret', access_token: 'private-token', unknown: { nested: 'private-value' } }], total: 2, unknown: 'private-envelope', password: 'private-password' },
+        '/shodan/scan/scan-a': { id: 'scan-a', status: 'PROCESSING', count: 2, created: '2026-01-01', api_key: 'issued-secret', access_token: 'private-token', unknown: { nested: 'private-value' } },
       }
       if (mode === 'domain-unindexed' || mode === 'domain-enrichment-denied') values['/dns/domain/example.test'] = {
         domain: 'example.test', data: [{ type: 'A', value: '192.0.2.8' }, { type: 'AAAA', value: '2001:db8::8' }, { type: 'A', value: '192.0.2.7' }], more: false,
       }
+      if (mode === 'bad-protocol') values['/shodan/protocols'].https = { description: 'invalid' }
       response.setHeader('content-type', 'application/json')
       const errorStatus = { 'trickle-404': 404, 'trickle-429': 429, 'trickle-503': 503 }[mode]
         ?? (mode === 'trickle-enrichment' && url.pathname.startsWith('/shodan/host/') ? 404 : undefined)
@@ -168,7 +183,7 @@ export async function withInvestigation(check) {
         response.on('close', () => { clearInterval(timer) })
         return
       }
-      response.end(JSON.stringify(values[url.pathname]))
+      response.end(JSON.stringify(inject(values[url.pathname])))
     })
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
     const origin = `https://127.0.0.1:${server.address().port}`

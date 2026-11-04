@@ -27,8 +27,8 @@ test('packaged account reads use the selected secret and preserve values', async
     if (failure === 'redirect') { response.writeHead(302, { location: `https://127.0.0.1:${server.address().port}/unexpected` }); response.end(accountKey); return }
     response.setHeader('content-type', 'application/json')
     response.end(JSON.stringify(malformed ? { plan: 'invalid' } : url.pathname === '/api-info'
-      ? { plan: 'synthetic', query_credits: cliExample ? 7 : 20, scan_credits: cliExample ? 3 : 98, monitored_ips: 256, usage_limits: { query_credits: -1, scan_credits: -1, monitored_ips: -1 }, nested: { echo: accountKey, encoded: encodeURIComponent(accountKey), form: new URLSearchParams({ key: accountKey }).toString().slice(4), escaped: JSON.stringify(accountKey).slice(1, -1) } }
-      : { member: false, credits: 0, display_name: null, created: '2026-01-01' }))
+      ? { plan: 'synthetic', query_credits: cliExample ? 7 : 20, scan_credits: cliExample ? 3 : 98, monitored_ips: 256, usage_limits: { query_credits: -1, scan_credits: -1, monitored_ips: -1, access_token: 'injected-private' }, unknown_vendor: 'injected-private', nested: { echo: accountKey, encoded: encodeURIComponent(accountKey), form: new URLSearchParams({ key: accountKey }).toString().slice(4), escaped: JSON.stringify(accountKey).slice(1, -1) } }
+      : { member: false, credits: 0, display_name: null, created: '2026-01-01', access_token: 'injected-private', unknown_vendor: 'injected-private' }))
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const address = server.address()
@@ -79,6 +79,7 @@ test('packaged account reads use the selected secret and preserve values', async
     assert.equal(JSON.parse(profile.stdout).credits, 0)
     assert.equal(JSON.parse(profile.stdout).member, false)
     assert.equal(JSON.parse(profile.stdout).display_name, null)
+    assert.doesNotMatch(info.stdout + profile.stdout, /injected-private|access_token|unknown_vendor/)
     assert.deepEqual(calls, [{ path: '/api-info', key: accountKey }, { path: '/account/profile', key: accountKey }])
     for (const form of [accountKey, encodeURIComponent(accountKey), new URLSearchParams({ key: accountKey }).toString().slice(4), JSON.stringify(accountKey).slice(1, -1), 'conflicting-secret']) {
       assert.ok(!(info.stdout + profile.stdout).includes(form))

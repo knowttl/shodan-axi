@@ -1,6 +1,8 @@
-export type MutationOperation = { readonly id: string; readonly command: string; readonly arguments: readonly string[]; readonly effect: 'write'; readonly cost: 'unknown'; readonly acceptance: string }
+export type MutationOperation = { readonly id: string; readonly command: string; readonly arguments: readonly string[]; readonly effect: 'write'; readonly cost: 'unknown' | 'scan'; readonly acceptance: string }
 
 export const mutations = [
+  { id: 'OP-009', command: 'scan submit', arguments: ['targets'], effect: 'write', cost: 'scan', acceptance: 'AC-009' },
+  { id: 'OP-010', command: 'scan internet', arguments: ['port', 'protocol'], effect: 'write', cost: 'unknown', acceptance: 'AC-010' },
   { id: 'OP-013', command: 'alert create', arguments: ['name', 'targets'], effect: 'write', cost: 'unknown', acceptance: 'AC-013' },
   { id: 'OP-015', command: 'alert remove', arguments: ['id'], effect: 'write', cost: 'unknown', acceptance: 'AC-015' },
   { id: 'OP-016', command: 'alert update', arguments: ['id', 'targets'], effect: 'write', cost: 'unknown', acceptance: 'AC-016' },

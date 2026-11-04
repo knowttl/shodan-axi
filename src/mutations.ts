@@ -15,8 +15,8 @@ import { windowsAcl } from './windows-acl.js'
 
 type Flags = Map<string, string | boolean>
 type Step = { operation: string; method: 'POST' | 'PUT' | 'DELETE'; path: string; body?: string; contentType?: string; target: string; readback: string; assign?: string }
-type Draft = { command: string; steps: Step[]; preconditions: string[]; context?: { dnsMore: boolean; futureDnsTracking: false } }
-const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--silent']
+type Draft = { command: string; steps: Step[]; preconditions: string[]; context?: { dnsMore: boolean; futureDnsTracking: false } | { targets: string[]; targetCount: number; estimatedScanCredits: number; force: boolean } | { scope: 'internet'; port: number; protocol: string } }
+const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--scan-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--silent', '--force']
 const value = (flags: Flags, name: string): string | undefined => { const entry = flags.get(name); return typeof entry === 'string' ? entry : undefined }
 const digest = (input: string): string => createHash('sha256').update(input).digest('hex')
 const bad = (message: string): never => { throw new ToolError('INVALID_INPUT', message, 'Run the command with --help for valid inputs') }
@@ -32,6 +32,33 @@ const targets = (text: string | undefined): string[] => {
   if (!result.every(item => { const [address, prefix, extra] = item.split('/'); const family = isIP(address ?? ''); return family && extra === undefined && (prefix === undefined || (/^\d+$/.test(prefix) && Number(prefix) <= (family === 4 ? 32 : 128))) })) return bad('Invalid target network')
   return result
 }
+function scanTargets(text: string | undefined): { targets: string[]; targetCount: number; estimatedScanCredits: number } {
+  const entries = targets(text)
+  const ranges = entries.map(entry => {
+    const [address = '', prefix] = entry.split('/')
+    const family = isIP(address); const bits = family === 4 ? 32 : 128
+    const normalized = family === 4 ? address : new URL(`http://[${address}]`).hostname.slice(1, -1)
+    let number: bigint
+    if (family === 4) number = normalized.split('.').reduce((value, octet) => (value << 8n) + BigInt(octet), 0n)
+    else {
+      const [left = '', right] = normalized.split('::')
+      const parts = right === undefined ? left.split(':') : [...(left ? left.split(':') : []), ...Array<string>(8 - (left ? left.split(':').length : 0) - (right ? right.split(':').length : 0)).fill('0'), ...(right ? right.split(':') : [])]
+      number = parts.reduce((value, part) => (value << 16n) + BigInt(`0x${part}`), 0n)
+    }
+    const hostBits = BigInt(bits - (prefix === undefined ? bits : Number(prefix)))
+    const start = number >> hostBits << hostBits
+    return { family, start, end: start + (1n << hostBits) - 1n }
+  }).sort((a, b) => a.family - b.family || (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
+  const estimated = ranges.reduce((total, range) => total + range.end - range.start + 1n, 0n)
+  let count = 0n; let previous: typeof ranges[number] | undefined
+  for (const range of ranges) {
+    if (previous && range.family === previous.family && range.start <= previous.end + 1n) previous.end = range.end > previous.end ? range.end : previous.end
+    else { if (previous) count += previous.end - previous.start + 1n; previous = { ...range } }
+  }
+  if (previous) count += previous.end - previous.start + 1n
+  if (estimated > 1000000n) return bad('Scan target expansion exceeds the supported budget')
+  return { targets: entries, targetCount: Number(count), estimatedScanCredits: Number(estimated) }
+}
 const record = z.record(z.string(), z.unknown())
 const safeBody = z.object({ provider: z.string().min(1).optional(), description: z.string().optional(), args: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])) }).strict()
 
@@ -39,6 +66,7 @@ export function isMutation(words: string[]): boolean {
   return words[0] === 'alert' && ['create', 'remove', 'update', 'enable', 'disable', 'ignore', 'unignore', 'notifier', 'clear', 'domain', 'import'].includes(words[1] ?? '')
     || words[0] === 'notifier' && ['create', 'remove', 'update'].includes(words[1] ?? '')
     || words[0] === 'org' && ['add', 'remove'].includes(words[1] ?? '')
+    || words[0] === 'scan' && ['submit', 'internet'].includes(words[1] ?? '')
 }
 
 export function validateMutationFlags(flags: Flags): void {
@@ -95,7 +123,21 @@ export async function draftMutation(words: string[], flags: Flags): Promise<Draf
   const alert = words[0] === 'alert'
   const item = (operation: string, method: Step['method'], path: string, target: string, readback: string, body?: string, contentType?: string): Step => ({ operation, method, path, target, readback, ...(body === undefined ? {} : { body }), ...(contentType === undefined ? {} : { contentType }) })
   let step: Step
-  if (words[0] === 'org' && ['add', 'remove'].includes(action ?? '') && args.length === 1) {
+  if (words[0] === 'scan') {
+    const relevant = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--scan-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', ...(action === 'submit' ? ['--force'] : [])]
+    for (const flag of flags.keys()) if (!relevant.includes(flag)) bad(`Flag ${flag} is not available for this scan`)
+    if (action === 'submit' && args.length === 1) {
+      const selection = scanTargets(args[0])
+      const body = new URLSearchParams({ ips: selection.targets.join(','), ...(flags.has('--force') ? { force: 'true' } : {}) }).toString()
+      return { command: 'scan submit', steps: [item('OP-009', 'POST', '/shodan/scan', selection.targets.join(','), '/shodan/scans', body, 'application/x-www-form-urlencoded')], preconditions: [], context: { ...selection, force: flags.has('--force') } }
+    }
+    if (action === 'internet' && args.length === 2 && /^\d+$/.test(args[0] ?? '') && Number(args[0]) >= 1 && Number(args[0]) <= 65535 && /^[A-Za-z0-9_-]{1,64}$/.test(args[1] ?? '')) {
+      const port = Number(args[0]); const protocol = args[1] ?? ''
+      const body = new URLSearchParams({ port: String(port), protocol }).toString()
+      return { command: 'scan internet', steps: [item('OP-010', 'POST', '/shodan/scan/internet', `${port}:${protocol}`, '/shodan/scans', body, 'application/x-www-form-urlencoded')], preconditions: [], context: { scope: 'internet', port, protocol } }
+    }
+    return bad('Invalid scan arguments')
+  } else if (words[0] === 'org' && ['add', 'remove'].includes(action ?? '') && args.length === 1) {
     const user = args[0]
     if (!user || user.length > 254 || !/^[A-Za-z0-9.!#$%&'*+/=?^_`|~-]+@[A-Za-z0-9.-]+$/.test(user)) return bad('Invalid member email')
     const path = `/org/member/${encodeURIComponent(user)}`
@@ -239,9 +281,12 @@ export async function draftImport(words: string[], flags: Flags): Promise<Draft>
 
 export async function mutate(draft: Draft, flags: Flags, selection: Selection, key: string): Promise<unknown> {
   const granted = value(flags, '--allow-operation')?.split(',') ?? []
-  if (!draft.steps.every(step => granted.includes(step.operation)) || !flags.has('--accept-unknown-cost')) throw new ToolError('WRITE_GRANT_REQUIRED', 'Exact operation grants and unknown-cost acceptance are required', 'Pass --allow-operation and --accept-unknown-cost')
-  const credit = value(flags, '--query-credit-budget'); const maximum = value(flags, '--max-requests')
-  if (!credit || !/^[1-9]\d*$/.test(credit) || Number(credit) < draft.steps.length + (draft.command === 'alert domain' ? 2 : 0) || Number(credit) > 1000 || !maximum || !/^[1-9]\d*$/.test(maximum) || Number(maximum) > 1000 || Number(maximum) < draft.preconditions.length + Math.max(2 * draft.steps.length, draft.command === 'alert clear' ? 1 : 0) + (draft.command === 'alert domain' ? 1 : 0)) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Explicit spending and request bounds are required', 'Pass sufficient --query-credit-budget and --max-requests')
+  const scan = draft.command.startsWith('scan ')
+  if (!draft.steps.every(step => granted.includes(step.operation)) || ((!scan || draft.command === 'scan internet') && !flags.has('--accept-unknown-cost'))) throw new ToolError('WRITE_GRANT_REQUIRED', 'Exact operation grants and unknown-cost acceptance are required', 'Pass the operation grant and accept unknown cost when applicable')
+  const credit = value(flags, scan ? '--scan-credit-budget' : '--query-credit-budget'); const maximum = value(flags, '--max-requests')
+  const minimumCredit = draft.command === 'scan submit' && draft.context && 'estimatedScanCredits' in draft.context ? draft.context.estimatedScanCredits : scan ? 1 : draft.steps.length + (draft.command === 'alert domain' ? 2 : 0)
+  const minimumRequests = scan ? 1 : draft.preconditions.length + Math.max(2 * draft.steps.length, draft.command === 'alert clear' ? 1 : 0) + (draft.command === 'alert domain' ? 1 : 0)
+  if (!credit || !/^[1-9]\d*$/.test(credit) || Number(credit) < minimumCredit || Number(credit) > (scan ? 1000000 : 1000) || !maximum || !/^[1-9]\d*$/.test(maximum) || Number(maximum) > 1000 || Number(maximum) < minimumRequests) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Explicit spending and request bounds are required', 'Pass sufficient credit and request budgets')
   const root = stateRoot(); const planDir = join(root, 'plans')
   const signingKey = await planKey(root)
   const selectionBinding = digest(JSON.stringify({ name: selection.name, source: selection.source, profile: selection.profile }))
@@ -255,7 +300,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
     const unsigned = { version: 1, token, fingerprint: digest(`${salt}:${key}`), salt, selection: selectionBinding, draft: draftBinding, preconditions, ...(draft.command === 'alert clear' ? { snapshot: draft.steps.map(step => step.target) } : {}), created: Date.now() }
     const plan = { ...unsigned, mac: createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest('hex') }
     await writePrivate(join(planDir, `${token}.json`), JSON.stringify(plan))
-    return { status: 'preview', token, effects: draft.steps.map(({ operation, method, target, body }) => ({ operation, method, target, cost: 'unknown', ...(['OP-013', 'OP-016'].includes(operation) && body ? { networks: z.object({ filters: z.object({ ip: z.array(z.string()) }) }).parse(JSON.parse(body)).filters.ip } : {}), ...(operation === 'OP-037' ? { notify: !flags.has('--silent') } : {}), ...(operation === 'OP-038' ? { downgrade: true } : {}) })), ...(draft.context ?? {}), queryCreditBudget: Number(credit), maxRequests: Number(maximum), help: 'Repeat the same command and grants with --execute --confirm <token>' }
+    return { status: 'preview', token, effects: draft.steps.map(({ operation, method, target, body }) => ({ operation, method, target, cost: operation === 'OP-009' ? 'scan' : 'unknown', ...(['OP-013', 'OP-016'].includes(operation) && body ? { networks: z.object({ filters: z.object({ ip: z.array(z.string()) }) }).parse(JSON.parse(body)).filters.ip } : {}), ...(operation === 'OP-037' ? { notify: !flags.has('--silent') } : {}), ...(operation === 'OP-038' ? { downgrade: true } : {}) })), ...(draft.context ?? {}), ...(scan ? { scanCreditBudget: Number(credit), estimatedScanCredits: draft.command === 'scan submit' ? minimumCredit : 'unknown', ...(draft.command === 'scan internet' ? { budgetEnforcement: 'unknown cost cannot be bounded' } : {}) } : { queryCreditBudget: Number(credit) }), maxRequests: Number(maximum), help: 'Repeat the same command and grants with --execute --confirm <token>' }
   }
   const token = value(flags, '--confirm')
   if (!token || !z.string().uuid().safeParse(token).success) return bad('Invalid confirmation token')
@@ -284,6 +329,14 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
     try {
       const sentAt = Date.now()
       const response = await requestJson(selection.profile.origin, step.path, key, {}, 1024 * 1024, 30000, false, undefined, { method: step.method, ...(step.body === undefined ? {} : { body: step.body }), ...(step.contentType === undefined ? {} : { contentType: step.contentType }) })
+      if (step.operation === 'OP-009' || step.operation === 'OP-010') {
+        const schema = z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/), count: z.number().int().nonnegative().optional(), credits_left: z.number().nonnegative().optional(), success: z.boolean().optional(), error: z.unknown().optional() })
+        const parsedScan = schema.safeParse(response)
+        if (!parsedScan.success || parsedScan.data.success === false || parsedScan.data.error !== undefined || (step.operation === 'OP-009' && (parsedScan.data.count === undefined || parsedScan.data.credits_left === undefined || parsedScan.data.count > minimumCredit))) throw new Error('invalid scan acknowledgement')
+        const outcome = { operation: step.operation, target: step.target, status: 'submitted', scanId: parsedScan.data.id, ...(parsedScan.data.count === undefined ? {} : { count: parsedScan.data.count }), ...(parsedScan.data.credits_left === undefined ? {} : { creditsLeft: parsedScan.data.credits_left }), vendorCompletion: 'unknown' }
+        await appendPrivate(log, `${JSON.stringify(clean({ token, ...outcome, phase: 'result', at: Date.now() }, key))}\n`)
+        return outcome
+      }
       const parsed = record.safeParse(response)
       if (!parsed.success || (Object.hasOwn(parsed.data, 'success') && parsed.data.success !== true) || Object.hasOwn(parsed.data, 'error')) throw new Error('invalid acknowledgement')
       if (['OP-013', 'OP-016'].includes(step.operation)) {
