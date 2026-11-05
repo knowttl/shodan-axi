@@ -32,7 +32,7 @@ export const alert = z.object({ id: z.string(), name: z.string(), filters: z.obj
   triggers: z.object(Object.fromEntries(['any', 'new_service', 'open_database', 'industrial_control_system', 'vulnerable', 'malware', 'ssl_expired', 'ssl_self_signed', 'uncommon', 'uncommon_plus', 'vulnerable_unverified', 'internet_scanner'].map(name => [name, z.object({}).optional()]))).optional(),
 })
 export const trigger = z.object({ name: z.string(), rule: z.string(), description: z.string() })
-export const notifier = z.object({ id: z.string(), provider: z.string(), description: z.string().optional() })
+export const notifier = z.object({ id: z.string(), provider: z.string(), description: z.string().nullish() })
 export const providers = z.object(Object.fromEntries(['email', 'telegram', 'webhook', 'slack', 'gitter', 'pagerduty', 'phone', 'pushover'].map(name => [name, z.object({ required: z.array(z.string()), description: z.string().optional() }).optional()])))
 const member = z.object({ username: z.string(), email: z.string() })
 export const organization = z.object({ id: z.string(), name: z.string(), created: z.string().optional(), admins: z.array(member), members: z.array(member), upgrade_type: z.string().optional(), domains: z.array(z.string()), logo: z.boolean() })

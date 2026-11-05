@@ -16,19 +16,21 @@ export async function withInvestigation(check) {
     const { keyFile, certFile } = await createTestTls(root, 'IP:127.0.0.1')
     const calls = []
     let mode = 'normal'
+    let vendorFailure
     const inject = value => {
       if (mode !== 'hosted-injection' || value === null || typeof value !== 'object') return value
       if (Array.isArray(value)) return value.map(inject)
       return { ...Object.fromEntries(Object.entries(value).map(([name, item]) => [name, inject(item)])), unknown_vendor: 'injected-private', access_token: 'injected-private' }
     }
     const alerts = new Map([['alert-a', { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null }]])
-    const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } }]])
+    const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: null, args: { to: 'person@example.test', token: 'private-value' } }]])
     const organization = { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }, { username: 'other', email: 'other@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' }
     const banner = (transport, timestamp) => ({ ip_str: '192.0.2.7', port: 443, transport, timestamp, data: 'synthetic banner fake-secret', location: { country_code: 'CA' }, ssl: { cert: { pubkey: { bits: 2048, type: 'rsa' } } } })
     const banners = [banner('tcp', '2026-01-01'), banner('udp', '2026-01-02'), { ...banner('tcp', '2026-01-03'), metadata: { truncated: ['http.html'] } }]
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (vendorFailure) { response.writeHead(vendorFailure.status, vendorFailure.headers); response.end(JSON.stringify({ error: vendorFailure.reason })); return }
       if (mode.startsWith('scan-collect') && request.method === 'GET' && (url.pathname === '/shodan/alert/alert-new' || url.pathname === '/shodan/ports/443')) {
         const service = (id, ip, port, transport) => ({ _shodan: { id }, ip_str: ip, port, transport, timestamp: '2026-01-01', data: 'synthetic' })
         const first = service('banner-a', '192.0.2.7', 443, 'tcp')
@@ -317,7 +319,7 @@ export async function withInvestigation(check) {
         close: () => { channel.end() },
       }
     }
-    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, setMode: value => { mode = value } })
+    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, setMode: value => { mode = value }, setVendorFailure: value => { vendorFailure = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })

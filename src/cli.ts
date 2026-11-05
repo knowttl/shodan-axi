@@ -242,7 +242,7 @@ export async function main(args: string[]): Promise<void> {
     else output(clean(result, key), json)
   } catch (error) {
     const failure = error instanceof ToolError ? error : new ToolError('CONFIG_INVALID', 'Unable to use configuration', 'Check profile settings and file permissions')
-    output(clean({ error: failure.code, message: failure.message, help: failure.help }, key || '\u0000'), json)
+    output(clean({ error: failure.code, message: failure.message, help: failure.help, ...(failure.retryAfterSeconds === undefined ? {} : { retryAfterSeconds: failure.retryAfterSeconds }) }, key || '\u0000'), json)
     process.exitCode = failure.code === 'INVALID_INPUT' ? 2 : 1
   }
 }

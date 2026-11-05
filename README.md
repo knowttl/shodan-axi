@@ -15,6 +15,11 @@ shodan-axi query list --page 2 --sort votes --order asc
 
 Use `--json` for JSON output.
 The API key is supplied through the referenced environment variable or a private absolute file, never a command argument.
+
+Account and investigation HTTP errors include the service hostname, status and sanitized vendor reason when available.
+Their structured output includes `error`, `message` and `help`, plus `retryAfterSeconds` when a valid `Retry-After` header is supplied, including on errors other than rate limits.
+Retry waits use seconds; HTTP dates are converted to a nonnegative wait.
+
 `doctor` makes one account information request and does not establish access to other API families.
 Queries that may consume credits require an exact operation grant and a credit budget.
 Unknown-cost investigation reads also require `--accept-unknown-cost` and an explicit request cap; stream bounds are described below.
