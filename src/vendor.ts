@@ -9,6 +9,7 @@ export async function requestJson(origin: string, path: string, key: string | un
   for (const [name, value] of Object.entries(query)) url.searchParams.set(name, value)
   let timer: ReturnType<typeof setTimeout> | undefined
   const bytes = await new Promise<Buffer>((resolve, reject) => {
+    const deadline = Date.now() + timeout
     const req = request(url, { method: mutation?.method ?? 'GET', ...(family ? { family } : {}), ...(mutation?.contentType ? { headers: { 'Content-Type': mutation.contentType } } : {}) }, response => {
       if (response.statusCode !== 200) {
         const code = response.statusCode === 404 ? 'NOT_FOUND' : response.statusCode === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR'
@@ -29,7 +30,7 @@ export async function requestJson(origin: string, path: string, key: string | un
         response.on('end', () => { fail(true) })
         response.on('error', () => { fail() })
         clearTimeout(timer)
-        timer = setTimeout(fail, timeout)
+        timer = setTimeout(fail, Math.max(0, deadline - Date.now()))
         return
       }
       const chunks: Buffer[] = []
