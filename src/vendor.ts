@@ -1,6 +1,7 @@
 import { request } from 'node:https'
 import { ToolError } from './errors.js'
 import { info, account } from './contracts.js'
+import { clean, cleanUpstream } from './redact.js'
 
 export async function requestJson(origin: string, path: string, key: string | undefined, query: Readonly<Record<string, string>> = {}, maxBytes = 10 * 1024 * 1024, timeout = 30000, allowText = false, family?: 4 | 6, mutation?: { method: 'POST' | 'PUT' | 'DELETE'; body?: string; contentType?: string }): Promise<unknown> {
   const url = new URL(path, origin)
@@ -10,10 +11,25 @@ export async function requestJson(origin: string, path: string, key: string | un
   const bytes = await new Promise<Buffer>((resolve, reject) => {
     const req = request(url, { method: mutation?.method ?? 'GET', ...(family ? { family } : {}), ...(mutation?.contentType ? { headers: { 'Content-Type': mutation.contentType } } : {}) }, response => {
       if (response.statusCode !== 200) {
-        response.destroy()
-        req.destroy()
         const code = response.statusCode === 404 ? 'NOT_FOUND' : response.statusCode === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR'
-        reject(new ToolError(code, `Request failed with HTTP ${response.statusCode ?? 0}`, 'Check access and retry later'))
+        const retry = response.headers['retry-after']
+        const retryAfterSeconds = code === 'RATE_LIMITED' && typeof retry === 'string' && /^\d+$/.test(retry) ? Number(retry) : undefined
+        const chunks: Buffer[] = []
+        let size = 0
+        const fail = (complete = false) => {
+          const text = complete ? Buffer.concat(chunks).toString('utf8').trim() : ''
+          let reason: unknown = text
+          try { const parsed: unknown = JSON.parse(text); reason = parsed && typeof parsed === 'object' && 'error' in parsed ? parsed.error : '' } catch { /* Plain text response. */ }
+          const safe = typeof reason === 'string' ? String(cleanUpstream(clean(reason, key || '\u0000'))) : ''
+          response.destroy()
+          req.destroy()
+          reject(new ToolError(code, `Request to ${url.hostname} failed with HTTP ${response.statusCode ?? 0}${safe ? `: ${safe}` : ''}`, 'Check access and retry later', retryAfterSeconds))
+        }
+        response.on('data', (chunk: Buffer) => { size += chunk.length; if (size > 65536) fail(); else chunks.push(chunk) })
+        response.on('end', () => { fail(true) })
+        response.on('error', () => { fail() })
+        clearTimeout(timer)
+        timer = setTimeout(fail, timeout)
         return
       }
       const chunks: Buffer[] = []

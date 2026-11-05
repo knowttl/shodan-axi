@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { createServer } from 'node:https'
-import { mkdtemp, readFile, rm, writeFile, chmod, symlink, mkdir } from 'node:fs/promises'
+import { cp, mkdtemp, readFile, rm, writeFile, chmod, symlink, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -12,6 +12,7 @@ test('packaged account reads use the selected secret and preserve values', async
   const tarball = execFileSync('npm', ['pack', '--ignore-scripts', '--pack-destination', root, '--json'], { encoding: 'utf8' })
   const packageDetails = JSON.parse(tarball)[0]
   const packageFile = join(root, packageDetails.filename)
+  await cp(new URL('../node_modules/', import.meta.url), join(root, 'node_modules'), { recursive: true })
   execFileSync('npm', ['install', '--offline', '--ignore-scripts', '--no-audit', '--no-fund', '--prefix', root, packageFile], { stdio: 'ignore' })
   const executable = join(root, 'node_modules', '.bin', 'shodan-axi')
   const { keyFile, certFile } = await createTestTls(root, 'IP:127.0.0.1')
@@ -20,9 +21,11 @@ test('packaged account reads use the selected secret and preserve values', async
   let malformed = false
   let cliExample = false
   let failure = ''
+  let vendorFailure
   const server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, (request, response) => {
     const url = new URL(request.url, 'https://localhost')
     calls.push({ path: url.pathname, key: url.searchParams.get('key') })
+    if (vendorFailure) { response.writeHead(vendorFailure.status, vendorFailure.headers); response.end(JSON.stringify({ error: vendorFailure.reason })); return }
     if (failure === 'denied') { response.writeHead(403); response.end(accountKey); return }
     if (failure === 'redirect') { response.writeHead(302, { location: `https://127.0.0.1:${server.address().port}/unexpected` }); response.end(accountKey); return }
     response.setHeader('content-type', 'application/json')
@@ -37,7 +40,7 @@ test('packaged account reads use the selected secret and preserve values', async
     auth: 'api-key', origin: `https://127.0.0.1:${address.port}`, apiKey: { env: 'TEST_ACCOUNT_KEY' },
   } } }), { mode: 0o600 })
   const env = { ...process.env, SHODAN_AXI_CONFIG: config, TEST_ACCOUNT_KEY: accountKey, SHODAN_AXI_API_KEY: 'conflicting-secret',
-    SHODAN_AXI_PROFILE: undefined, SHODAN_AXI_AUTH: undefined, SHODAN_AXI_ORIGIN: undefined, SHODAN_AXI_STREAM_ORIGIN: undefined,
+    SHODAN_AXI_PROFILE: undefined, SHODAN_AXI_AUTH: undefined, SHODAN_AXI_ORIGIN: `https://127.0.0.1:${address.port}`, SHODAN_AXI_STREAM_ORIGIN: undefined,
     SHODAN_AXI_READ_ONLY: 'true', NODE_OPTIONS: undefined, NODE_EXTRA_CA_CERTS: certFile }
   const run = (args, overrides = {}) => new Promise((resolve, reject) => {
     const child = spawn(executable, [...args, '--json'], { env: { ...env, ...overrides } })
@@ -136,6 +139,18 @@ test('packaged account reads use the selected secret and preserve values', async
     assert.ok(!redirect.stdout.includes(accountKey))
     assert.equal(calls.length, previousCalls + 1)
     failure = ''
+    for (const [status, error, reason] of [[503, 'UPSTREAM_ERROR', 'Service unavailable'], [429, 'RATE_LIMITED', 'Please throttle requests'], [403, 'UPSTREAM_ERROR', 'Access denied'], [404, 'NOT_FOUND', 'No information available']]) {
+      vendorFailure = { status, reason: `${reason} ${accountKey} AccountKey=private`, headers: status === 429 ? { 'Retry-After': '56' } : {} }
+      const result = await run(['info', '--profile', 'selected'])
+      const body = JSON.parse(result.stdout)
+      assert.equal(result.code, 1)
+      assert.equal(body.error, error)
+      assert.match(body.message, new RegExp(`127\\.0\\.0\\.1.*HTTP ${status}.*${reason}`))
+      assert.equal(body.retryAfterSeconds, status === 429 ? 56 : undefined)
+      assert.ok(!result.stdout.includes(accountKey))
+      assert.ok(!result.stdout.includes('AccountKey=private'))
+    }
+    vendorFailure = undefined
     malformed = true
     const invalid = await run(['info', '--profile', 'selected'])
     assert.equal(invalid.code, 1)

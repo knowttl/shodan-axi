@@ -22,7 +22,7 @@ export async function withInvestigation(check) {
       return { ...Object.fromEntries(Object.entries(value).map(([name, item]) => [name, inject(item)])), unknown_vendor: 'injected-private', access_token: 'injected-private' }
     }
     const alerts = new Map([['alert-a', { id: 'alert-a', name: 'Synthetic alert', filters: { ip: ['192.0.2.0/24'] }, triggers: {}, notifiers: [], expiration: null }]])
-    const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: 'Synthetic', args: { to: 'person@example.test', token: 'private-value' } }]])
+    const notifiers = new Map([['notifier-a', { id: 'notifier-a', provider: 'email', description: null, args: { to: 'person@example.test', token: 'private-value' } }]])
     const organization = { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }, { username: 'other', email: 'other@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' }
     const banner = (transport, timestamp) => ({ ip_str: '192.0.2.7', port: 443, transport, timestamp, data: 'synthetic banner fake-secret', location: { country_code: 'CA' }, ssl: { cert: { pubkey: { bits: 2048, type: 'rsa' } } } })
     const banners = [banner('tcp', '2026-01-01'), banner('udp', '2026-01-02'), { ...banner('tcp', '2026-01-03'), metadata: { truncated: ['http.html'] } }]
