@@ -13,6 +13,11 @@ Mark every check that cannot be performed as pending.
 - [ ] Verify the final Artium package and inventory pins and reject a mismatched pin before credential retrieval.
 - [ ] Obtain separate authorization to publish the package, and record the published version and integrity before updating the companion pin.
 
+The [release workflow](.github/workflows/release-please.yml) runs only on manual dispatch from `main`; merging a change does not start it.
+After release preparation and authorized live checks, dispatch it to create or update a release PR, merge that PR, then dispatch it again to create the release and publish its tagged package.
+The publish step builds the tagged source and uses npm OIDC trusted publishing with provenance, so configure the package's trusted publisher for this repository and workflow before publishing.
+The [release configuration](release-please-config.json) owns versioning policy and the CLI version synchronization target.
+
 ## Live checks
 
 Each live action requires prior authorization for its exact operation, target, effect, maximum requests, credits, bytes and duration, and any notification, readback and cleanup.
