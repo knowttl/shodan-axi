@@ -14,7 +14,10 @@ export async function requestJson(origin: string, path: string, key: string | un
       if (response.statusCode !== 200) {
         const code = response.statusCode === 404 ? 'NOT_FOUND' : response.statusCode === 429 ? 'RATE_LIMITED' : 'UPSTREAM_ERROR'
         const retry = response.headers['retry-after']
-        const retryAfterSeconds = code === 'RATE_LIMITED' && typeof retry === 'string' && /^\d+$/.test(retry) ? Number(retry) : undefined
+        const retryWait = typeof retry === 'string'
+          ? /^\d+$/.test(retry) ? Number(retry) : Math.ceil((Date.parse(retry) - Date.now()) / 1000)
+          : NaN
+        const retryAfterSeconds = Number.isFinite(retryWait) ? Math.max(0, retryWait) : undefined
         const chunks: Buffer[] = []
         let size = 0
         const fail = (complete = false) => {

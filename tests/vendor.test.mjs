@@ -51,3 +51,25 @@ for (const [status, body] of [[200, '[22,443]'], [503, '{"error":"Service unavai
     else await assert.rejects(result, { code: 'UPSTREAM_ERROR', message: 'Request to api.shodan.io failed with HTTP 503: Service unavailable' })
   })
 }
+
+for (const status of [301, 401, 403, 404, 429, 503]) {
+  for (const [retry, retryAfterSeconds] of [
+    ['60', 60],
+    ['Thu, 01 Jan 1970 00:01:00 GMT', 60],
+    ['Wed, 31 Dec 1969 23:59:00 GMT', 0],
+    ['not a date', undefined],
+  ]) {
+    test(`HTTP ${status} preserves Retry-After ${retry}`, async t => {
+      const { response, sendHeaders } = transport(t, status)
+      response.headers['retry-after'] = retry
+      const result = requestJson('https://api.shodan.io', '/shodan/ports', undefined)
+      t.mock.timers.tick(250)
+      sendHeaders()
+      response.emit('end')
+      await assert.rejects(result, error => {
+        assert.equal(error.retryAfterSeconds, retryAfterSeconds)
+        return true
+      })
+    })
+  }
+}

@@ -16,6 +16,7 @@ export async function withInvestigation(check) {
     const { keyFile, certFile } = await createTestTls(root, 'IP:127.0.0.1')
     const calls = []
     let mode = 'normal'
+    let vendorFailure
     const inject = value => {
       if (mode !== 'hosted-injection' || value === null || typeof value !== 'object') return value
       if (Array.isArray(value)) return value.map(inject)
@@ -29,6 +30,7 @@ export async function withInvestigation(check) {
     server = createServer({ key: await readFile(keyFile), cert: await readFile(certFile) }, async (request, response) => {
       const url = new URL(request.url, 'https://127.0.0.1')
       calls.push({ method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams) })
+      if (vendorFailure) { response.writeHead(vendorFailure.status, vendorFailure.headers); response.end(JSON.stringify({ error: vendorFailure.reason })); return }
       if (mode.startsWith('scan-collect') && request.method === 'GET' && (url.pathname === '/shodan/alert/alert-new' || url.pathname === '/shodan/ports/443')) {
         const service = (id, ip, port, transport) => ({ _shodan: { id }, ip_str: ip, port, transport, timestamp: '2026-01-01', data: 'synthetic' })
         const first = service('banner-a', '192.0.2.7', 443, 'tcp')
@@ -317,7 +319,7 @@ export async function withInvestigation(check) {
         close: () => { channel.end() },
       }
     }
-    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, setMode: value => { mode = value } })
+    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, setMode: value => { mode = value }, setVendorFailure: value => { vendorFailure = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })

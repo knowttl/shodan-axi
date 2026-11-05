@@ -183,10 +183,10 @@ export async function investigate(plan: Investigation, origin: string | undefine
       Math.max(1, deadline - Date.now()), operation.id === 'OP-044' || operation.id === 'OP-072', operation.id === 'OP-072' ? 6 : undefined) }
     catch (error) {
       if (['OP-031', 'OP-032', 'OP-033', 'OP-054', 'OP-055', 'OP-056', 'OP-057', 'OP-058'].includes(operation.id) && error instanceof ToolError) {
-        if (/HTTP 3\d\d/.test(error.message)) throw new ToolError('REDIRECT_REFUSED', 'The service redirected the request', 'Check the service origin before retrying')
-        if (/HTTP 40[13]/.test(error.message)) throw new ToolError('ACCESS_DENIED', 'Access to this service was denied', 'Check this service entitlement')
+        if (/HTTP 3\d\d/.test(error.message)) throw new ToolError('REDIRECT_REFUSED', error.message, 'Check the service origin before retrying', error.retryAfterSeconds)
+        if (/HTTP 40[13]/.test(error.message)) throw new ToolError('ACCESS_DENIED', error.message, 'Check this service entitlement', error.retryAfterSeconds)
       }
-      if (cost && error instanceof ToolError && error.code === 'UPSTREAM_ERROR') throw new ToolError(error.code, `${error.message}; credit use is uncertain`, 'Check the service and remaining credit before retrying')
+      if (cost && error instanceof ToolError && error.code === 'UPSTREAM_ERROR') throw new ToolError(error.code, `${error.message}; credit use is uncertain`, 'Check the service and remaining credit before retrying', error.retryAfterSeconds)
       throw error
     }
   }
