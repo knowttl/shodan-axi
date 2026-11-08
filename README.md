@@ -1,7 +1,97 @@
 # shodan-axi
 
-An agent-facing CLI for Shodan investigation, scans, alerts, notifiers and organization membership.
-It supports SecretRef-based profiles, host and DNS inspection, search, counts, bounded statistics, historical and shared intelligence reads, geographic active probes, scan submission and job inspection, and alert, notifier and organization membership management.
+Shodan investigation and gated operations for agents and the humans running them.
+
+[![npm](https://img.shields.io/npm/v/%40knowttl%2Fshodan-axi)](https://www.npmjs.com/package/@knowttl/shodan-axi) [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE) [![Node](https://img.shields.io/node/v/%40knowttl%2Fshodan-axi)](package.json) [![npm provenance](https://img.shields.io/npm/provenance/%40knowttl%2Fshodan-axi)](https://www.npmjs.com/package/@knowttl/shodan-axi#provenance)
+
+[Why](#why-this-exists) · [Quickstart](#quickstart) · [Agent setup](#use-with-your-agent) · [Coverage](#what-it-covers) · [Safety](#safety) · [Configuration](#configuration) · [Commands](#commands) · [Contributing](#contributing) · [License](#license)
+
+## Why this exists
+
+Shodan investigations can involve multiple services, credit costs and operations that change remote state.
+shodan-axi provides bounded reads, compact TOON output and explicit previews and confirmations for protected operations.
+It uses the selected account's access and does not grant Shodan permissions.
+
+## Quickstart
+
+Requires Node.js >=24.14.0 and <25, and npm >=11.9.0 and <12.
+Install the CLI and inspect local profiles:
+
+```sh
+npm install --global @knowttl/shodan-axi
+shodan-axi profile list --json
+```
+
+With no saved profiles, the output is:
+
+```json
+{"profiles":[]}
+```
+
+Supply `SHODAN_AXI_API_KEY` through your secret manager, then create a profile referencing the variable and run a read:
+
+```sh
+shodan-axi profile set default --env SHODAN_AXI_API_KEY
+shodan-axi auth status --profile default
+shodan-axi host 192.0.2.7 --profile default
+```
+
+Replace the example IP with the address to investigate; results depend on Shodan's index and your account.
+For a one-off installation, use `npx -y @knowttl/shodan-axi profile list`.
+
+## Use with your agent
+
+Install the session integration for the agent you use:
+
+```sh
+shodan-axi setup claude
+shodan-axi setup codex
+shodan-axi setup opencode
+```
+
+Claude and Codex run local authentication status at session start; OpenCode injects it into system context.
+Setup writes Claude's `settings.json` under `CLAUDE_CONFIG_DIR` (default `~/.claude`), Codex's `hooks.json` and enables `features.hooks` in `config.toml` under `CODEX_HOME` (default `~/.codex`), or OpenCode's `opencode/plugins/shodan-axi.js` under `XDG_CONFIG_HOME` (default `~/.config`).
+Restart the agent session after setup.
+For on-demand guidance, install `npx skills add knowttl/shodan-axi --skill shodan-axi` or read the [packaged skill](skills/shodan-axi/SKILL.md).
+`shodan-axi skill` prints the packaged skill.
+These integrations grant no Shodan permissions.
+To remove them, delete only the shodan-axi SessionStart hook from Claude's `settings.json` or Codex's `hooks.json`, or remove OpenCode's `opencode/plugins/shodan-axi.js` under its configuration root.
+Preserve unrelated settings; Codex's `features.hooks` setting may be shared with other hooks.
+Run setup again after relocating the executable to update its recorded absolute path.
+
+## What it covers
+
+| Group | Purpose | Access |
+| --- | --- | --- |
+| `host`, `search`, `count`, `stats`, DNS and query commands | Investigate indexed hosts and intelligence | Reads; some require credit grants |
+| `stream`, `radar`, `threatnet`, `download` | Bounded streams and exports | Protected operations |
+| `alert`, `notifier`, `org` | Manage alerts, notifiers and organization membership | Reads and gated writes |
+| `scan`, `geonet` | Inspect scan jobs and perform active probes | Reads and gated active operations |
+| `parse`, `convert` | Filter and convert local files | Local |
+| `profile`, `auth`, `setup` | Configure credentials and agent integration | Local |
+
+Run a command with `--help` for its arguments and flags; the [command inventory](command-inventory.json) records operation grants and output schemas.
+
+## Safety
+
+Writes and active probes preview first and require an exact operation grant, bounds and confirmation before execution.
+Some reads consume credits or have unknown cost and require explicit grants and budgets.
+Set `SHODAN_AXI_READ_ONLY=true` to refuse write, probe, stream and search export execution; previews remain available.
+In read-only mode, writes and active probes are refused before credential retrieval.
+Credentials use environment or private file references, never command arguments.
+Network commands send requests to Shodan services using the selected profile and account permissions; local `parse` and `convert` need neither credentials nor network access.
+Treat output and saved investigation data as sensitive.
+
+## Configuration
+
+`shodan-axi config path` prints the effective profile path.
+On Linux and macOS the default is `~/.config/shodan-axi/config.json`, with an absolute `XDG_CONFIG_HOME` overriding the root; Windows uses `%APPDATA%\shodan-axi\config.json` or `~/AppData/Roaming/shodan-axi/config.json`.
+`SHODAN_AXI_CONFIG` overrides the path and `SHODAN_AXI_PROFILE` selects a profile; command-specific `--config` and `--profile` take precedence.
+Profiles reference an environment variable or private absolute file containing the API key.
+
+## Commands
+
+These examples illustrate common reads:
 
 ```sh
 shodan-axi profile set default --env SHODAN_AXI_API_KEY
@@ -14,7 +104,6 @@ shodan-axi query list --page 2 --sort votes --order asc
 ```
 
 Use `--json` for JSON output.
-The API key is supplied through the referenced environment variable or a private absolute file, never a command argument.
 
 Account and investigation HTTP errors include the service hostname, status and sanitized vendor reason when available.
 Their structured output includes `error`, `message` and `help`, plus `retryAfterSeconds` when a valid `Retry-After` header is supplied, including on errors other than rate limits.
@@ -34,7 +123,6 @@ Alert and notifier reads and writes are available through the native CLI.
 Every filter must match; `net:<CIDR>` matches `ip_str`, strings use substring matching, and numbers, booleans and array elements use exact matching.
 With `--filename <path>`, parsing requires a filter and appends matching full records, rather than projected fields, to gzip JSONL with a `.json.gz` suffix.
 `convert <file> <format>` produces CSV (`csv`), KML (`kml`), GeoJSON (`geo.json`), XLSX (`xlsx`) or extracted JPEG images (`images`).
-Both local commands run without credentials or network access.
 Each input file is bounded to 1 MiB on disk, including uncompressed files, and gzip input is bounded to 10 MiB decompressed; outputs use private paths and existing conversion outputs are not overwritten.
 `alert export` saves secret-free alert configuration as gzip JSONL.
 `alert stats` uses free count-facet reads, normalizes overlapping networks and labels top-facet results partial.
@@ -50,7 +138,6 @@ These exports save gzip JSONL, append `.json.gz` to the destination if needed, a
 Export execution reports `total: null` when bounds prevent visiting every selected network; otherwise `total` covers the full selection.
 The execution `requests` count includes search requests and, for `alert download`, the alert-selection request; it excludes requests from the separate preview invocation.
 Exports that stop before all results are saved, or include provider-truncated records, report `complete: false` and retain a `.partial` suffix, even when `--fields` omits truncation metadata.
-`SHODAN_AXI_READ_ONLY=true` refuses execution of these search exports; previews remain available.
 Hosted execution refuses chargeable exports and dataset transfers before retrieving credentials.
 Native `stream` supports one of `--asn`, `--countries`, `--ports`, `--vulns`, `--custom-filters`, `--alert` or `--tags`, or the unfiltered banner stream.
 Use comma-separated dotted `--fields` to select event fields and `--quiet` to suppress event output while retaining the final accounting.
@@ -66,7 +153,6 @@ Native `radar` uses the same stream selectors and bounds, renders a map in an in
 For non-interactive use, the result includes a bounded map snapshot; `--filename` saves that snapshot to a private absolute path.
 Follow mode retains the same read bounds; gzip JSONL files rotate by UTC day or compressed file size, and `--retain` bounds the number of retained stream files.
 `--compresslevel` accepts 0 through 9, defaults to 6 and applies across rotations.
-Stream connections are refused when `SHODAN_AXI_READ_ONLY=true`.
 Ordinary hosted command dispatch refuses stream operations before retrieving credentials; supervised sessions use the Artium companion protocol described below.
 Threatnet event schemas and tag-filtered stream availability remain unverified against the live service.
 Organization access is available with `org info`, `org add <email>` and `org remove <email>`.
@@ -100,7 +186,6 @@ An organization membership add notifies the member unless `--silent` is supplied
 Writes require an exact operation grant and request and credit bounds; unknown-cost writes also require `--accept-unknown-cost`.
 Run the desired command first to create a protected preview, then repeat it with the same arguments and `--execute --confirm <token>`.
 For example, preview a removal with `shodan-axi alert remove <id> --allow-operation OP-015 --accept-unknown-cost --query-credit-budget 1 --max-requests 3`.
-Set `SHODAN_AXI_READ_ONLY=true` to refuse write and active probe execution before credential retrieval; previews remain available.
 Write plans bind the selected profile, credential, input, effects and observed state; uncertain sends are never automatically retried.
 Confirmation tokens expire after 15 minutes and are consumed before dispatch.
 Plans and the default `writes.log` journal live under `shodan-axi` in the absolute `XDG_STATE_HOME` directory, falling back to `~/.local/state`; Windows uses absolute `LOCALAPPDATA`, falling back to `~/AppData/Local`.
@@ -119,11 +204,7 @@ Streams use the selected profile's `streamOrigin`, defaulting to `https://stream
 Offline verification uses controlled fakes; live mutations and active probes require the owner's separate per-action approval.
 Provider mutation encoding and live readback contracts remain unverified.
 
-Use `shodan-axi setup claude`, `shodan-axi setup codex` or `shodan-axi setup opencode` to opt into local session integration for that agent.
-Claude and Codex run local authentication status at session start; OpenCode injects it into system context.
-Setup writes Claude's `settings.json` under `CLAUDE_CONFIG_DIR` (default `~/.claude`), Codex's `hooks.json` and enables `features.hooks` in `config.toml` under `CODEX_HOME` (default `~/.codex`), or OpenCode's `opencode/plugins/shodan-axi.js` under `XDG_CONFIG_HOME` (default `~/.config`).
-Run setup again after relocating the executable to update its recorded absolute path.
-Alternatively, install the packaged `shodan-axi` skill for on-demand guidance; `shodan-axi skill` prints its contents.
+## Contributing
 
 For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B6.1 --paths native,artium --offline --with-dependencies`.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
@@ -140,3 +221,7 @@ Existing Artium launchers must add this handshake and admission fields before us
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.
 It fails if either path or matching coverage is unavailable.
 Native Windows platform verification remains pending until run on Windows.
+
+## License
+
+[MIT](LICENSE).
