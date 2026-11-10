@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { operations } from '../dist/catalogue.js'
 import { probes } from '../dist/geonet.js'
+import { hostedWritePolicy } from '../dist/hosted-writes.js'
 import { mutations } from '../dist/mutation-catalogue.js'
 import { description, nextSteps } from '../dist/discovery.js'
 import { hostedReadOutputs, statsOutput, homeOutput, doctorOutput, alertExportOutput, alertStatsOutput, dataListOutput } from '../dist/contracts.js'
@@ -39,7 +40,7 @@ const commands = [
   { command: 'skill', effect: 'local', flags: ['--json', '--output', '--help'], arguments: [] },
   { command: 'version', effect: 'local', flags: ['--help'], arguments: [] },
 ]
-const content = `${JSON.stringify({ commands }, null, 2)}\n`
+const content = `${JSON.stringify({ commands, hostedWrites: hostedWritePolicy }, null, 2)}\n`
 const skill = `---\nname: shodan-axi\ndescription: Inspect Shodan account, host and DNS information using a configured SecretRef.\n---\n\n# Shodan investigation\n\n${description}.\n\n${nextSteps.map(step => `- \`${step}\``).join('\n')}\n\nUse \`--json\` for JSON output.\nConfigure a profile with \`shodan-axi profile set <name> --env <variable>\` or \`--file <absolute-path>\`; do not put a key on the command line.\nCredit-consuming reads require an exact operation grant and explicit budget.\n`
 const skillPath = new URL('../skills/shodan-axi/SKILL.md', import.meta.url)
 for (const [file, expected] of [[target, content], [skillPath, skill]]) {

@@ -12,7 +12,7 @@ import { ToolError } from './errors.js'
 import { evidence } from './evidence.js'
 import { geonet } from './geonet.js'
 import { investigate, planInvestigation } from './investigation.js'
-import { draftClear, draftDomain, draftImport, draftMutation, isMutation, mutate, validateMutationFlags } from './mutations.js'
+import { confirmedWrite, isMutation, validateMutationFlags } from './mutations.js'
 import { readPrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { read } from './vendor.js'
@@ -171,11 +171,11 @@ export async function main(args: string[]): Promise<void> {
       if (immediate) flags.delete('--wait')
       validateMutationFlags(flags)
       if (flags.has('--help')) { output({ command: words.slice(0, 2).join(' '), effect: 'write', cost: words[0] === 'scan' && words[1] === 'submit' ? 'scan' : 'unknown', help: words[0] === 'scan' ? 'Preview with --allow-operation, --scan-credit-budget and --max-requests; Internet scans also require --accept-unknown-cost. Repeat with --execute --confirm <token>.' : 'Preview with exact --allow-operation, --accept-unknown-cost, --query-credit-budget and --max-requests; repeat the request with --execute --confirm <token>.' }, json); return }
-      const draft = ['clear', 'domain'].includes(words[1] ?? '') ? undefined : words[1] === 'import' ? await draftImport(words, flags) : await draftMutation(words, flags)
-      const chosen = await select(configPath(option('--config')), option('--profile'))
-      key = await secret(chosen)
-      const selectedDraft = draft ?? await (words[1] === 'domain' ? draftDomain(words, flags, chosen, key) : draftClear(words, flags, chosen, key))
-      const result = await mutate(selectedDraft, flags, chosen, key)
+      const result = await confirmedWrite(words, flags, async () => {
+        const selection = await select(configPath(option('--config')), option('--profile'))
+        key = await secret(selection)
+        return { selection, key }
+      })
       if (typeof result === 'object' && result !== null && 'status' in result && (result.status === 'OUTCOME_UNKNOWN' || result.status === 'READBACK_UNVERIFIED')) process.exitCode = 1
       output(clean(result, key), json)
       return

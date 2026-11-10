@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises'
 import { createGzip } from 'node:zlib'
 import { z } from 'zod'
 import { ToolError } from './errors.js'
-import { planKey, stateRoot } from './mutations.js'
+import { confirmationTtlMs, planKey, stateRoot } from './mutations.js'
 import { preparePrivateDirectory, readPrivate, writePrivate } from './private-file.js'
 import { clean } from './redact.js'
 import { requestJson } from './vendor.js'
@@ -64,9 +64,9 @@ export async function alertExportDraft(words: string[], flags: Flags, selection:
   return { ...draft, query: queries.join(' '), queries }
 }
 
-export async function exportSearch(draft: ExportDraft, flags: Flags, selection: Selection, key: string): Promise<unknown> {
+export async function exportSearch(draft: ExportDraft, flags: Flags, selection: Selection, key: string, owner?: string): Promise<unknown> {
   const root = stateRoot(); const directory = join(root, 'plans'); const signingKey = await planKey(root)
-  const binding = hash(JSON.stringify({ draft, selection, credential: hash(key) }))
+  const binding = hash(JSON.stringify({ draft, selection, credential: hash(key), ...(owner === undefined ? {} : { owner }) }))
   if (!flags.has('--execute')) {
     let total = 0
     for (const query of draft.queries ?? [draft.query]) {
@@ -90,7 +90,7 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   if (!plan.success) throw new ToolError('PLAN_STALE', 'Confirmation does not match the request', 'Create a new preview')
   const { mac, ...unsigned } = plan.data
   const expected = createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest()
-  if (!timingSafeEqual(expected, Buffer.from(mac, 'hex')) || unsigned.token !== token || unsigned.binding !== binding || Date.now() - unsigned.created > 900000) throw new ToolError('PLAN_STALE', 'Confirmation does not match the request', 'Create a new preview')
+  if (!timingSafeEqual(expected, Buffer.from(mac, 'hex')) || unsigned.token !== token || unsigned.binding !== binding || Date.now() - unsigned.created > confirmationTtlMs) throw new ToolError('PLAN_STALE', 'Confirmation does not match the request', 'Create a new preview')
   try { await rename(planPath, join(directory, `${token}.used`)) } catch { throw new ToolError('PLAN_STALE', 'Confirmation was already consumed', 'Create a new preview') }
   const partial = `${draft.destination}.partial`
   await preparePrivateDirectory(dirname(draft.destination))

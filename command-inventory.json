@@ -5444,5 +5444,148 @@
       ],
       "arguments": []
     }
-  ]
+  ],
+  "hostedWrites": {
+    "approved": [
+      {
+        "command": "alert create",
+        "operations": [
+          "OP-013"
+        ]
+      },
+      {
+        "command": "alert remove",
+        "operations": [
+          "OP-015"
+        ]
+      },
+      {
+        "command": "alert update",
+        "operations": [
+          "OP-016"
+        ]
+      },
+      {
+        "command": "alert enable",
+        "operations": [
+          "OP-019"
+        ]
+      },
+      {
+        "command": "alert disable",
+        "operations": [
+          "OP-020"
+        ]
+      },
+      {
+        "command": "alert ignore",
+        "operations": [
+          "OP-021",
+          "OP-070"
+        ]
+      },
+      {
+        "command": "alert unignore",
+        "operations": [
+          "OP-022"
+        ]
+      },
+      {
+        "command": "alert notifier add",
+        "operations": [
+          "OP-023"
+        ]
+      },
+      {
+        "command": "alert notifier remove",
+        "operations": [
+          "OP-024"
+        ]
+      },
+      {
+        "command": "notifier create",
+        "operations": [
+          "OP-027"
+        ]
+      },
+      {
+        "command": "notifier remove",
+        "operations": [
+          "OP-028"
+        ]
+      },
+      {
+        "command": "notifier update",
+        "operations": [
+          "OP-030"
+        ]
+      },
+      {
+        "command": "org add",
+        "operations": [
+          "OP-037"
+        ]
+      },
+      {
+        "command": "org remove",
+        "operations": [
+          "OP-038"
+        ]
+      },
+      {
+        "command": "alert clear",
+        "operations": [
+          "OP-015"
+        ]
+      },
+      {
+        "command": "alert domain",
+        "operations": [
+          "OP-040",
+          "OP-013",
+          "OP-019"
+        ]
+      },
+      {
+        "command": "alert import",
+        "operations": [
+          "OP-027",
+          "OP-013",
+          "OP-019",
+          "OP-021",
+          "OP-023"
+        ]
+      },
+      {
+        "command": "download",
+        "operations": [
+          "OP-003"
+        ]
+      },
+      {
+        "command": "alert download",
+        "operations": [
+          "OP-003"
+        ]
+      }
+    ],
+    "budget": {
+      "queryCredits": 1000,
+      "scanCredits": 1000000,
+      "requests": 1000
+    },
+    "confirmation": {
+      "singleUse": true,
+      "ttlMs": 900000,
+      "boundTo": [
+        "credential",
+        "profile",
+        "owner session",
+        "command",
+        "grants",
+        "budgets",
+        "observed state"
+      ]
+    }
+  }
 }

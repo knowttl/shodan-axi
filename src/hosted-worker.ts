@@ -5,7 +5,8 @@ import { z } from 'zod'
 import { readConfig, secret, type Selection } from './credentials.js'
 import { ToolError } from './errors.js'
 import { banner } from './contracts.js'
-import { cleanUpstream } from './redact.js'
+import { hostedWrite } from './hosted-writes.js'
+import { clean, cleanUpstream } from './redact.js'
 import { stream, streamDraft, type StreamObserver } from './stream.js'
 
 const requestId = z.string().min(1).max(128)
@@ -16,11 +17,19 @@ const selector = z.object({ flag: z.enum(['--asn', '--countries', '--ports', '--
 const start = z.object({ version: z.literal(1), type: z.literal('start'), requestId, admission: admissionBinding, operation: z.string().regex(/^OP-(?:04[6-9]|05[0-3]|065|06[7-9])$/), selector, bounds, confirmation: z.string().uuid() }).strict()
 const extend = z.object({ version: z.literal(1), type: z.literal('extend'), requestId, admission: admissionBinding, deadlineMs: z.number().int().positive().safe() }).strict()
 const stop = z.object({ version: z.literal(1), type: z.literal('stop'), requestId }).strict()
-const message = z.discriminatedUnion('type', [admit, start, extend, stop])
+const write = z.object({ version: z.literal(1), type: z.literal('write'), requestId, admission: admissionBinding, phase: z.enum(['preview', 'execute']), words: z.array(z.string().min(1).max(4096)).min(1).max(8), flags: z.record(z.string(), z.union([z.string().max(4096), z.literal(true)])), confirmation: z.string().uuid().optional() }).strict()
+const message = z.discriminatedUnion('type', [admit, start, extend, stop, write])
+
+async function hostSelection(profilePath: string): Promise<Selection> {
+  const config = await readConfig(profilePath, true)
+  const profile = config.profiles.artium
+  if (config.defaultProfile !== 'artium' || Object.keys(config.profiles).length !== 1 || profile?.auth !== 'api-key' || !('env' in profile.apiKey) || !/^ARTIUM_SECRET_\d+$/.test(profile.apiKey.env)) throw new ToolError('ADMISSION_REQUIRED', 'A private host profile is required', 'Start the session through Artium')
+  return { name: 'artium', source: 'file', profile }
+}
 
 export function main(): void {
   const socket = new Socket({ fd: 3, readable: true, writable: true })
-  const seen = new Set<string>(); let pending: Buffer = Buffer.alloc(0); let started = false; let finished = false; let stopRequested = false
+  const seen = new Set<string>(); let pending: Buffer = Buffer.alloc(0); let started = false; let writing = false; let finished = false; let stopRequested = false
   let cancel: (() => void) | undefined; let renew: ((deadlineMs: number) => boolean) | undefined
   let approvedBounds: z.infer<typeof bounds> | undefined
   let admission: z.infer<typeof admit> | undefined
@@ -52,10 +61,7 @@ export function main(): void {
     try {
       const draft = streamDraft(words, flags)
       if (stopRequested) { await close('cancelled'); return }
-      const config = await readConfig(admitted.profilePath, true)
-      const profile = config.profiles.artium
-      if (config.defaultProfile !== 'artium' || Object.keys(config.profiles).length !== 1 || profile?.auth !== 'api-key' || !('env' in profile.apiKey) || !/^ARTIUM_SECRET_\d+$/.test(profile.apiKey.env)) throw new ToolError('ADMISSION_REQUIRED', 'A private host profile is required', 'Start the session through Artium')
-      const selected: Selection = { name: 'artium', source: 'file', profile }
+      const selected = await hostSelection(admitted.profilePath)
       if (stopRequested) { await close('cancelled'); return }
       const key = await secret(selected)
       if (stopRequested) { await close('cancelled'); return }
@@ -68,6 +74,20 @@ export function main(): void {
       const result = z.object({ stopReason: z.string(), count: z.number().int().nonnegative(), bytes: z.number().int().nonnegative(), partialRecordCount: z.number().int().nonnegative(), debugDiscarded: z.number().int().nonnegative(), error: z.string().optional() }).parse(await stream(draft, flags, selected, key, observer))
       await close(result.stopReason, result.error, result)
     } catch (error) { await close('worker-error', error instanceof ToolError ? error.code : 'UPSTREAM_ERROR') }
+  }
+  const runWrite = async (input: z.infer<typeof write>, admitted: z.infer<typeof admit>): Promise<void> => {
+    let key = ''
+    let result: unknown
+    try {
+      const credentials = async (): Promise<{ selection: Selection; key: string }> => {
+        const selection = await hostSelection(admitted.profilePath)
+        key = await secret(selection)
+        return { selection, key }
+      }
+      result = await hostedWrite({ words: input.words, flags: new Map(Object.entries(input.flags)), phase: input.phase, ...(input.confirmation === undefined ? {} : { confirmation: input.confirmation }) }, credentials, admitted.admission)
+    } catch (error) { result = error instanceof ToolError ? { error: error.code, message: error.message, help: error.help } : { error: 'UPSTREAM_ERROR' } }
+    await send({ version: 1, type: 'write-result', requestId: input.requestId, phase: input.phase, result: clean(result, key || '\u0000') }).catch(() => undefined)
+    if (input.phase === 'execute') await close('completed')
   }
   const handle = async (line: Buffer): Promise<void> => {
     if (finished || protocolError) return
@@ -82,8 +102,12 @@ export function main(): void {
     }
     if (!admission || (input.type !== 'stop' && input.admission !== admission.admission)) { await reject('ADMISSION_REQUIRED'); return }
     if (input.type === 'start') {
-      if (started) { await reject(); return }
+      if (started || writing) { await reject(); return }
       started = true; void run(input, admission); return
+    }
+    if (input.type === 'write') {
+      if (started) { await reject(); return }
+      writing = true; await runWrite(input, admission); return
     }
     if (!started) { await reject(); return }
     if (input.type === 'stop') { stopRequested = true; cancel?.(); return }
