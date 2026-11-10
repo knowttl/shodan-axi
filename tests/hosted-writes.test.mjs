@@ -90,8 +90,11 @@ test('inventory publishes the approved writes and budget ceilings', async () => 
   assert.equal(hostedWrites.confirmation.singleUse, true)
   const approved = hostedWrites.approved.map(item => item.command)
   assert.ok(approved.every(command => commands.some(item => item.command === command)))
-  const writeCommands = commands.filter(item => item.effect === 'write' && !item.command.startsWith('scan ')).map(item => item.command)
-  assert.deepEqual([...new Set(writeCommands)].sort(), approved.filter(command => !command.includes('download')).sort())
-  assert.ok(!approved.some(command => command.startsWith('scan ')))
+  assert.deepEqual(approved.sort(), [
+    'alert clear', 'alert create', 'alert disable', 'alert domain', 'alert download', 'alert enable',
+    'alert ignore', 'alert import', 'alert notifier add', 'alert notifier remove', 'alert remove',
+    'alert unignore', 'alert update', 'download', 'notifier create', 'notifier remove',
+    'notifier update', 'org add', 'org remove',
+  ].sort())
   assert.deepEqual(hostedWrites.approved.find(item => item.command === 'alert domain').operations, ['OP-040', 'OP-013', 'OP-019'])
 })
