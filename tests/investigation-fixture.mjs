@@ -231,6 +231,8 @@ export async function withInvestigation(check) {
       }
       if (mode === 'alert-formula-facets') values['/shodan/host/count'] = { total: 1, facets: { domain: [{ value: '=1+2', count: 1 }] } }
       if (mode === 'alert-multiple-facets') values['/shodan/host/count'] = { total: 2, facets: { port: [{ value: 443, count: 2 }, { value: 80, count: 1 }], country: [{ value: 'CA', count: 2 }] } }
+      if (mode === 'export-count-changed') values['/shodan/host/count'] = { total: 3 }
+      if (mode === 'export-credits-changed') values['/api-info'] = { query_credits: 19 }
       if (mode === 'alert-top-buckets') {
         values['/shodan/alert/info'] = [{ id: 'one', name: 'One', filters: { ip: ['192.0.2.0/24', '192.0.2.0/25'] } }, { id: 'two', name: 'Two', filters: { ip: ['198.51.100.0/24'] } }]
         values['/shodan/host/count'] = url.searchParams.get('query') === 'net:192.0.2.0/24' ? { total: 10, facets: { port: [{ value: 443, count: 6 }] } } : { total: 8, facets: { port: [{ value: 80, count: 5 }] } }
@@ -319,7 +321,7 @@ export async function withInvestigation(check) {
         close: () => { channel.end() },
       }
     }
-    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, setMode: value => { mode = value }, setVendorFailure: value => { vendorFailure = value } })
+    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, certFile, setMode: value => { mode = value }, setVendorFailure: value => { vendorFailure = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })

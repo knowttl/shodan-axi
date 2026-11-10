@@ -46,7 +46,7 @@ for (const { mode, limit, budget } of [
     const before = calls.length
     const result = await run([...args, '--execute', '--confirm', preview.body.token])
     assert.equal(result.body.requests, calls.length - before)
-    assert.equal(result.body.requests, budget)
+    assert.equal(result.body.requests, budget + 2)
     assert.equal(result.body.complete, true, result.stdout)
     assert.equal(gunzipSync(await readFile(destination)).toString().trim().split('\n').length, limit)
     assert.equal((await run([...args, '--execute', '--confirm', preview.body.token])).body.error, 'PLAN_NOT_FOUND')
@@ -65,7 +65,7 @@ for (const selection of [[], ['--alert-id', 'alert-a']]) test(`alert download co
     const before = calls.length
     const result = await run([...args, '--execute', '--confirm', preview.body.token])
     assert.equal(result.body.requests, calls.length - before)
-    assert.equal(result.body.requests, 2)
+    assert.equal(result.body.requests, 4)
     assert.equal(result.body.complete, true, result.stdout)
     assert.equal(gunzipSync(await readFile(destination)).toString().trim().split('\n').length, 2)
   })

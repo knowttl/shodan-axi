@@ -132,13 +132,20 @@ Hosted upload and file-based transformations are deferred pending a defined uplo
 Real dataset retrieval is deferred for this release by owner decision.
 The approved storage-host list is empty, so packaged `data download` refuses before credential access or network requests.
 `download <query>` and `alert download` preview the selected query, destination, size and credit bounds before requiring exact confirmation.
+Their confirmations bind the previewed result count and available query credits, which are checked again before export.
+The generated inventory's `hostedWrites.budgetRules` maps each approved command to its budget rule, and `hostedWrites.budget` supplies the ceilings.
+Consumers can import `hostedWriteBudget` from `dist/hosted-writes.js` to calculate bounds from command words, a flag map and a credential callback using the same planners as execution.
+The calculation reads selected alerts when needed, requires the corresponding operation grants, and does not create a confirmation or perform a write.
+Domain bounds are calculated locally before any DNS lookup, even when budgets are omitted or insufficient.
+For alert downloads, supply the intended query credit budget to calculate the request bound; otherwise the minimum credit budget is assumed.
+Recalculate the alert download request bound if the query credit budget changes.
 These native exports require `--allow-operation OP-003`, `--query-credit-budget`, `--max-requests`, `--max-bytes`, `--limit` and `--filename`.
 `alert download` exports the union of monitored networks from all alerts, or one alert selected with `--alert-id <id>`.
 These exports save gzip JSONL, append `.json.gz` to the destination if needed, and refuse to overwrite existing output.
 Export execution reports `total: null` when bounds prevent visiting every selected network; otherwise `total` covers the full selection.
-The execution `requests` count includes search requests and, for `alert download`, the alert-selection request; it excludes requests from the separate preview invocation.
+The execution `requests` count includes search requests, the count and account rechecks, and, for `alert download`, the alert-selection request; it excludes requests from the separate preview invocation.
 Exports that stop before all results are saved, or include provider-truncated records, report `complete: false` and retain a `.partial` suffix, even when `--fields` omits truncation metadata.
-Hosted execution refuses chargeable exports and dataset transfers before retrieving credentials.
+Ordinary hosted command dispatch refuses chargeable exports and dataset transfers before retrieving credentials; approved exports are available through the supervised write protocol.
 Native `stream` supports one of `--asn`, `--countries`, `--ports`, `--vulns`, `--custom-filters`, `--alert` or `--tags`, or the unfiltered banner stream.
 Use comma-separated dotted `--fields` to select event fields and `--quiet` to suppress event output while retaining the final accounting.
 For buffered output, `--separator` or `--color` or `--no-color` adds a text view; JSON output includes it as `display`.
@@ -212,10 +219,13 @@ Hosted reads also require Docker and a prebuilt local `artium-test-node24` image
 See [the commissioning checklist](COMMISSIONING.md) for release evidence and separately authorized live checks.
 The Artium companion owns session admission, authorization and revision rechecks, quotas, replay accounting, revocation and private-directory cleanup; this package owns the worker protocol.
 The companion must launch the worker with a private inherited duplex fd 3 and send the first JSONL frame as `{ "version": 1, "type": "admit", "requestId": "<unique>", "admission": "<session-random-binding>", "profilePath": "<private-absolute-path>" }`.
-The binding must contain 32 to 128 characters and appear as `admission` on every `start` and `extend` frame after the host has authorized that operation; duplicate admission, missing admission and mismatched bindings terminate the worker.
+The binding must contain 32 to 128 characters and appear as `admission` on every `start`, `extend` and `write` frame after the host has authorized that operation; duplicate admission, missing admission and mismatched bindings terminate the worker.
 Protocol failures during streaming cancel active work and attach the error to the final `closed` frame while preserving stream progress counters.
 The profile must be private, contain exactly the default profile `artium`, and use an API key SecretRef named `ARTIUM_SECRET_<n>`; the worker reads only this profile and never selects ambient credentials or origin overrides.
 The host must provide only its selected secret and trusted runtime settings, isolate the inherited channel from callers, and create the confirmation plan using that same private profile and selected secret before sending `start`.
+For approved writes, the host sends a `write` frame with a unique `requestId`, `phase` (`preview` or `execute`), command `words` and a flag map; execution also carries the preview's `confirmation` token.
+The worker responds with a `write-result` frame and closes after execution; confirmation is bound to the admission session.
+The generated inventory lists approved writes and their operation grants, and hosted downloads require a host-selected absolute destination.
 The channel is a trusted host-to-child boundary, not a public authorization endpoint or proof of host identity against another process with the same OS privileges.
 Existing Artium launchers must add this handshake and admission fields before using this worker; the pinned real-host conformance check must pass with that companion change before delivery.
 The JSON manifest supplies absolute `tarball`, `installedPackage`, `serverModule`, `clientExecutable` and `toolExecutable` paths, the tarball `sha256`, and the committed `artiumRevision`.

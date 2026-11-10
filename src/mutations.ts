@@ -15,7 +15,15 @@ import { windowsAcl } from './windows-acl.js'
 
 type Flags = Map<string, string | boolean>
 type Step = { operation: string; method: 'POST' | 'PUT' | 'DELETE'; path: string; body?: string; contentType?: string; target: string; readback: string; assign?: string }
-type Draft = { command: string; steps: Step[]; preconditions: string[]; context?: { dnsMore: boolean; futureDnsTracking: false } | { targets: string[]; targetCount: number; estimatedScanCredits: number; force: boolean } | { scope: 'internet'; port: number; protocol: string } }
+export const confirmationTtlMs = 900000
+export const budgetCeiling = { queryCredits: 1000, scanCredits: 1000000, requests: 1000 }
+export const mutationBudgetPolicy = {
+  ordinary: { creditPerStep: 1, requestPerPrecondition: 1, requestsPerStep: 2, extraCredits: 0, extraRequests: 0, minimumRequests: 0 },
+  clear: { creditPerStep: 1, requestPerPrecondition: 1, requestsPerStep: 2, extraCredits: 0, extraRequests: 0, minimumRequests: 1 },
+  domain: { creditPerStep: 1, requestPerPrecondition: 1, requestsPerStep: 2, extraCredits: 2, extraRequests: 1, minimumRequests: 0 },
+  domainPreflight: { creditsPerTrigger: 1, extraCredits: 3, minimumRequests: 2 },
+} as const
+export type Draft = { command: string; steps: Step[]; preconditions: string[]; context?: { dnsMore: boolean; futureDnsTracking: false } | { targets: string[]; targetCount: number; estimatedScanCredits: number; force: boolean } | { scope: 'internet'; port: number; protocol: string } }
 const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--scan-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--silent', '--force']
 const value = (flags: Flags, name: string): string | undefined => { const entry = flags.get(name); return typeof entry === 'string' ? entry : undefined }
 const digest = (input: string): string => createHash('sha256').update(input).digest('hex')
@@ -208,15 +216,21 @@ export async function draftClear(words: string[], flags: Flags, selection: Selec
   return { command: 'alert clear', steps, preconditions: steps.map(step => step.readback) }
 }
 
-export async function draftDomain(words: string[], flags: Flags, selection: Selection, key: string): Promise<Draft> {
+function domainInputs(words: string[], flags: Flags): { domain: string; triggers: string[] } {
   const domain = words[2]
   if (words.length !== 3 || !domain || domain.length > 253 || !domain.split('.').every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))) return bad('Invalid domain')
   for (const flag of flags.keys()) if (!['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--triggers'].includes(flag)) bad(`Flag ${flag} is not available for domain`)
   const triggers = (value(flags, '--triggers') ?? 'malware,industrial_control_system,internet_scanner,iot,open_database,new_service,ssl_expired,vulnerable').split(',').map(item => id(item))
+  return { domain, triggers }
+}
+
+export async function draftDomain(words: string[], flags: Flags, selection: Selection, key: string): Promise<Draft> {
+  const { domain, triggers } = domainInputs(words, flags)
   const grants = value(flags, '--allow-operation')?.split(',') ?? []
   if (!['OP-040', 'OP-013', 'OP-019'].every(operation => grants.includes(operation)) || !flags.has('--accept-unknown-cost')) throw new ToolError('WRITE_GRANT_REQUIRED', 'Domain alert requires grants for DNS, alert and trigger steps', 'Grant OP-040, OP-013 and OP-019 and accept unknown cost')
   const budget = value(flags, '--query-credit-budget') ?? ''; const maximum = value(flags, '--max-requests') ?? ''
-  if (!/^[1-9]\d*$/.test(budget) || Number(budget) < triggers.length + 3 || !/^[1-9]\d*$/.test(maximum) || Number(maximum) < 2) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Domain alert requires sufficient spending and request bounds', 'Increase --query-credit-budget and --max-requests')
+  const preflight = mutationBudgetPolicy.domainPreflight
+  if (!/^[1-9]\d*$/.test(budget) || Number(budget) < triggers.length * preflight.creditsPerTrigger + preflight.extraCredits || !/^[1-9]\d*$/.test(maximum) || Number(maximum) < preflight.minimumRequests) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Domain alert requires sufficient spending and request bounds', 'Increase --query-credit-budget and --max-requests')
   const dnsPath = `/dns/domain/${encodeURIComponent(domain)}?history=false`
   const result = z.object({ domain: z.string(), data: z.array(z.object({ type: z.string(), value: z.string() }).passthrough()), more: z.boolean() }).passthrough().safeParse(await requestJson(selection.profile.origin, dnsPath, key))
   if (!result.success || result.data.domain.toLowerCase() !== domain.toLowerCase()) throw new ToolError('INVALID_RESPONSE', 'The service returned an invalid DNS page', 'Retry the selected domain')
@@ -279,17 +293,53 @@ export async function draftImport(words: string[], flags: Flags): Promise<Draft>
   return { command: 'alert import', steps, preconditions: ['/notifier', '/shodan/alert/info'] }
 }
 
-export async function mutate(draft: Draft, flags: Flags, selection: Selection, key: string): Promise<unknown> {
+function mutationBounds(command: string, steps: number, preconditions: number): { creditFlag: string; minimumCredit: number; maximumCredit: number; minimumRequests: number; maximumRequests: number } {
+  const policy = command === 'alert domain' ? mutationBudgetPolicy.domain : command === 'alert clear' ? mutationBudgetPolicy.clear : mutationBudgetPolicy.ordinary
+  return {
+    creditFlag: '--query-credit-budget',
+    minimumCredit: Math.max(1, steps * policy.creditPerStep + policy.extraCredits),
+    maximumCredit: budgetCeiling.queryCredits,
+    minimumRequests: preconditions * policy.requestPerPrecondition + Math.max(policy.requestsPerStep * steps, policy.minimumRequests) + policy.extraRequests,
+    maximumRequests: budgetCeiling.requests,
+  }
+}
+
+export function domainBudgetRules(words: string[], flags: Flags): ReturnType<typeof mutationBounds> & { preflight: { minimumCredit: number; minimumRequests: number } } {
+  const { triggers } = domainInputs(words, flags)
+  const preflight = mutationBudgetPolicy.domainPreflight
+  return { ...mutationBounds('alert domain', triggers.length + 1, 1), preflight: { minimumCredit: triggers.length * preflight.creditsPerTrigger + preflight.extraCredits, minimumRequests: preflight.minimumRequests } }
+}
+
+export function budgetRules(draft: Draft): { creditFlag: string; minimumCredit: number; maximumCredit: number; minimumRequests: number; maximumRequests: number } {
+  const scan = draft.command.startsWith('scan ')
+  if (!scan) return mutationBounds(draft.command, draft.steps.length, draft.preconditions.length)
+  return {
+    creditFlag: '--scan-credit-budget',
+    minimumCredit: draft.command === 'scan submit' && draft.context && 'estimatedScanCredits' in draft.context ? draft.context.estimatedScanCredits : 1,
+    maximumCredit: budgetCeiling.scanCredits,
+    minimumRequests: 1,
+    maximumRequests: budgetCeiling.requests,
+  }
+}
+
+export async function confirmedWrite(words: string[], flags: Flags, credentials: () => Promise<{ selection: Selection; key: string }>, owner?: string): Promise<unknown> {
+  const clearOrDomain = ['clear', 'domain'].includes(words[1] ?? '')
+  const draft = clearOrDomain ? undefined : words[1] === 'import' ? await draftImport(words, flags) : await draftMutation(words, flags)
+  const { selection, key } = await credentials()
+  const selectedDraft = draft ?? await (words[1] === 'domain' ? draftDomain(words, flags, selection, key) : draftClear(words, flags, selection, key))
+  return mutate(selectedDraft, flags, selection, key, owner)
+}
+
+export async function mutate(draft: Draft, flags: Flags, selection: Selection, key: string, owner?: string): Promise<unknown> {
   const granted = value(flags, '--allow-operation')?.split(',') ?? []
   const scan = draft.command.startsWith('scan ')
   if (!draft.steps.every(step => granted.includes(step.operation)) || ((!scan || draft.command === 'scan internet') && !flags.has('--accept-unknown-cost'))) throw new ToolError('WRITE_GRANT_REQUIRED', 'Exact operation grants and unknown-cost acceptance are required', 'Pass the operation grant and accept unknown cost when applicable')
-  const credit = value(flags, scan ? '--scan-credit-budget' : '--query-credit-budget'); const maximum = value(flags, '--max-requests')
-  const minimumCredit = draft.command === 'scan submit' && draft.context && 'estimatedScanCredits' in draft.context ? draft.context.estimatedScanCredits : scan ? 1 : draft.steps.length + (draft.command === 'alert domain' ? 2 : 0)
-  const minimumRequests = scan ? 1 : draft.preconditions.length + Math.max(2 * draft.steps.length, draft.command === 'alert clear' ? 1 : 0) + (draft.command === 'alert domain' ? 1 : 0)
-  if (!credit || !/^[1-9]\d*$/.test(credit) || Number(credit) < minimumCredit || Number(credit) > (scan ? 1000000 : 1000) || !maximum || !/^[1-9]\d*$/.test(maximum) || Number(maximum) > 1000 || Number(maximum) < minimumRequests) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Explicit spending and request bounds are required', 'Pass sufficient credit and request budgets')
+  const rules = budgetRules(draft)
+  const credit = value(flags, rules.creditFlag); const maximum = value(flags, '--max-requests')
+  if (!credit || !/^[1-9]\d*$/.test(credit) || Number(credit) < rules.minimumCredit || Number(credit) > rules.maximumCredit || !maximum || !/^[1-9]\d*$/.test(maximum) || Number(maximum) > rules.maximumRequests || Number(maximum) < rules.minimumRequests) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Explicit spending and request bounds are required', 'Pass sufficient credit and request budgets')
   const root = stateRoot(); const planDir = join(root, 'plans')
   const signingKey = await planKey(root)
-  const selectionBinding = digest(JSON.stringify({ name: selection.name, source: selection.source, profile: selection.profile }))
+  const selectionBinding = digest(JSON.stringify({ name: selection.name, source: selection.source, profile: selection.profile, ...(owner === undefined ? {} : { owner }) }))
   const draftBinding = digest(JSON.stringify({ draft, granted, credit, maximum }))
   const observe = async (): Promise<string[]> => Promise.all(draft.preconditions.map(async path => {
     try { return digest(JSON.stringify(await requestJson(selection.profile.origin, path, key))) }
@@ -300,7 +350,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
     const unsigned = { version: 1, token, fingerprint: digest(`${salt}:${key}`), salt, selection: selectionBinding, draft: draftBinding, preconditions, ...(draft.command === 'alert clear' ? { snapshot: draft.steps.map(step => step.target) } : {}), created: Date.now() }
     const plan = { ...unsigned, mac: createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest('hex') }
     await writePrivate(join(planDir, `${token}.json`), JSON.stringify(plan))
-    return { status: 'preview', token, effects: draft.steps.map(({ operation, method, target, body }) => ({ operation, method, target, cost: operation === 'OP-009' ? 'scan' : 'unknown', ...(['OP-013', 'OP-016'].includes(operation) && body ? { networks: z.object({ filters: z.object({ ip: z.array(z.string()) }) }).parse(JSON.parse(body)).filters.ip } : {}), ...(operation === 'OP-037' ? { notify: !flags.has('--silent') } : {}), ...(operation === 'OP-038' ? { downgrade: true } : {}) })), ...(draft.context ?? {}), ...(scan ? { scanCreditBudget: Number(credit), estimatedScanCredits: draft.command === 'scan submit' ? minimumCredit : 'unknown', ...(draft.command === 'scan internet' ? { budgetEnforcement: 'unknown cost cannot be bounded' } : {}) } : { queryCreditBudget: Number(credit) }), maxRequests: Number(maximum), help: 'Repeat the same command and grants with --execute --confirm <token>' }
+    return { status: 'preview', token, effects: draft.steps.map(({ operation, method, target, body }) => ({ operation, method, target, cost: operation === 'OP-009' ? 'scan' : 'unknown', ...(['OP-013', 'OP-016'].includes(operation) && body ? { networks: z.object({ filters: z.object({ ip: z.array(z.string()) }) }).parse(JSON.parse(body)).filters.ip } : {}), ...(operation === 'OP-037' ? { notify: !flags.has('--silent') } : {}), ...(operation === 'OP-038' ? { downgrade: true } : {}) })), ...(draft.context ?? {}), ...(scan ? { scanCreditBudget: Number(credit), estimatedScanCredits: draft.command === 'scan submit' ? rules.minimumCredit : 'unknown', ...(draft.command === 'scan internet' ? { budgetEnforcement: 'unknown cost cannot be bounded' } : {}) } : { queryCreditBudget: Number(credit) }), maxRequests: Number(maximum), help: 'Repeat the same command and grants with --execute --confirm <token>' }
   }
   const token = value(flags, '--confirm')
   if (!token || !z.string().uuid().safeParse(token).success) return bad('Invalid confirmation token')
@@ -311,7 +361,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
   if (!plan.success) throw new ToolError('PLAN_STALE', 'The confirmation does not match the current request', 'Create a new preview')
   const { mac, ...unsigned } = plan.data
   const expected = createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest()
-  if (!timingSafeEqual(expected, Buffer.from(mac, 'hex')) || plan.data.token !== token || plan.data.fingerprint !== digest(`${plan.data.salt}:${key}`) || plan.data.selection !== selectionBinding || plan.data.draft !== draftBinding || Date.now() - plan.data.created > 900000) throw new ToolError('PLAN_STALE', 'The confirmation does not match the current request', 'Create a new preview')
+  if (!timingSafeEqual(expected, Buffer.from(mac, 'hex')) || plan.data.token !== token || plan.data.fingerprint !== digest(`${plan.data.salt}:${key}`) || plan.data.selection !== selectionBinding || plan.data.draft !== draftBinding || Date.now() - plan.data.created > confirmationTtlMs) throw new ToolError('PLAN_STALE', 'The confirmation does not match the current request', 'Create a new preview')
   if (JSON.stringify(await observe()) !== JSON.stringify(plan.data.preconditions)) throw new ToolError('PLAN_STALE', 'The observed state changed', 'Create a new preview')
   try { await rename(planPath, join(planDir, `${token}.used`)) } catch { throw new ToolError('PLAN_STALE', 'The confirmation was already consumed', 'Create a new preview') }
   const log = process.env.SHODAN_AXI_WRITE_LOG ?? join(root, 'writes.log')
@@ -332,7 +382,7 @@ export async function mutate(draft: Draft, flags: Flags, selection: Selection, k
       if (step.operation === 'OP-009' || step.operation === 'OP-010') {
         const schema = z.object({ id: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/), count: z.number().int().nonnegative().optional(), credits_left: z.number().nonnegative().optional(), success: z.boolean().optional(), error: z.unknown().optional() })
         const parsedScan = schema.safeParse(response)
-        if (!parsedScan.success || parsedScan.data.success === false || parsedScan.data.error !== undefined || (step.operation === 'OP-009' && (parsedScan.data.count === undefined || parsedScan.data.credits_left === undefined || parsedScan.data.count > minimumCredit))) throw new Error('invalid scan acknowledgement')
+        if (!parsedScan.success || parsedScan.data.success === false || parsedScan.data.error !== undefined || (step.operation === 'OP-009' && (parsedScan.data.count === undefined || parsedScan.data.credits_left === undefined || parsedScan.data.count > rules.minimumCredit))) throw new Error('invalid scan acknowledgement')
         const outcome = { operation: step.operation, target: step.target, status: 'submitted', scanId: parsedScan.data.id, ...(parsedScan.data.count === undefined ? {} : { count: parsedScan.data.count }), ...(parsedScan.data.credits_left === undefined ? {} : { creditsLeft: parsedScan.data.credits_left }), vendorCompletion: 'unknown' }
         await appendPrivate(log, `${JSON.stringify(clean({ token, ...outcome, phase: 'result', at: Date.now() }, key))}\n`)
         return outcome
