@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/knowttl/shodan-axi/compare/shodan-axi-v0.1.1...shodan-axi-v0.1.2) (2026-11-10)
+
+
+### Features
+
+* add supervised hosted writes ([#17](https://github.com/knowttl/shodan-axi/issues/17)) ([c753f88](https://github.com/knowttl/shodan-axi/commit/c753f88a7555ab57f99256c52143b3a8a2439888))
+
 ## [0.1.1](https://github.com/knowttl/shodan-axi/compare/shodan-axi-v0.1.0...shodan-axi-v0.1.1) (2026-11-05)
 
 
