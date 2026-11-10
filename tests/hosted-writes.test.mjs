@@ -180,3 +180,11 @@ test('shared bounds match real plans for each write family', { timeout: 120000 }
     }
   })
 })
+
+test('domain budget calculation requires no DNS lookup or credentials', async () => {
+  const credentials = () => { throw new Error('Credentials must not be requested') }
+  for (const budgets of [{}, { '--query-credit-budget': '1', '--max-requests': '1' }, { '--query-credit-budget': '4', '--max-requests': '6' }]) {
+    const flags = new Map(Object.entries({ '--triggers': 'new_service', ...budgets }))
+    assert.deepEqual(await hostedWriteBudget(['alert', 'domain', 'example.test'], flags, credentials), { creditFlag: '--query-credit-budget', minimumCredit: 4, maximumCredit: 1000, minimumRequests: 6, maximumRequests: 1000, preflight: { minimumCredit: 4, minimumRequests: 2 } })
+  }
+})

@@ -3,7 +3,7 @@ import type { Selection } from './credentials.js'
 import { alertExportDraft, exportBudgetPolicy, exportBudgetRules, exportDraft, exportSearch } from './bulk-export.js'
 import { ToolError } from './errors.js'
 import { mutations } from './mutation-catalogue.js'
-import { budgetCeiling, budgetRules, confirmationTtlMs, confirmedWrite, draftClear, draftDomain, draftImport, draftMutation, mutationBudgetPolicy, validateMutationFlags } from './mutations.js'
+import { budgetCeiling, budgetRules, confirmationTtlMs, confirmedWrite, domainBudgetRules, draftClear, draftImport, draftMutation, mutationBudgetPolicy, validateMutationFlags } from './mutations.js'
 
 type Flags = Map<string, string | boolean>
 export type WriteRequest = { words: string[]; flags: Flags; phase: 'preview' | 'execute'; confirmation?: string }
@@ -31,6 +31,7 @@ function approvedWrite(words: string[]): typeof approvedWrites[number] {
 export async function hostedWriteBudget(words: string[], input: Flags, credentials: () => Promise<{ selection: Selection; key: string }>): Promise<ReturnType<typeof budgetRules> & { preflight?: { minimumCredit: number; minimumRequests: number } }> {
   const approved = approvedWrite(words)
   for (const flag of input.keys()) if (hostControlled.includes(flag)) throw new ToolError('INVALID_INPUT', `Flag ${flag} is chosen by the host`, 'Remove the flag from the request')
+  if (approved.command === 'alert domain') return domainBudgetRules(words, input)
   const flags = new Map(input)
   flags.set('--max-requests', String(budgetCeiling.requests))
   if (approved.operations.includes('OP-003')) {
@@ -40,15 +41,12 @@ export async function hostedWriteBudget(words: string[], input: Flags, credentia
   }
   validateMutationFlags(flags)
   let draft
-  if (approved.command === 'alert clear' || approved.command === 'alert domain') {
+  if (approved.command === 'alert clear') {
     flags.set('--query-credit-budget', String(budgetCeiling.queryCredits))
     const { selection, key } = await credentials()
-    draft = await (approved.command === 'alert domain' ? draftDomain(words, flags, selection, key) : draftClear(words, flags, selection, key))
+    draft = await draftClear(words, flags, selection, key)
   } else draft = await (approved.command === 'alert import' ? draftImport(words, flags) : draftMutation(words, flags))
-  const rules = budgetRules(draft)
-  if (approved.command !== 'alert domain') return rules
-  const preflight = mutationBudgetPolicy.domainPreflight
-  return { ...rules, preflight: { minimumCredit: (draft.steps.length - 1) * preflight.creditsPerTrigger + preflight.extraCredits, minimumRequests: preflight.minimumRequests } }
+  return budgetRules(draft)
 }
 
 export async function hostedWrite(request: WriteRequest, credentials: () => Promise<{ selection: Selection; key: string }>, owner: string): Promise<unknown> {

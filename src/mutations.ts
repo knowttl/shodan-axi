@@ -216,11 +216,16 @@ export async function draftClear(words: string[], flags: Flags, selection: Selec
   return { command: 'alert clear', steps, preconditions: steps.map(step => step.readback) }
 }
 
-export async function draftDomain(words: string[], flags: Flags, selection: Selection, key: string): Promise<Draft> {
+function domainInputs(words: string[], flags: Flags): { domain: string; triggers: string[] } {
   const domain = words[2]
   if (words.length !== 3 || !domain || domain.length > 253 || !domain.split('.').every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))) return bad('Invalid domain')
   for (const flag of flags.keys()) if (!['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--triggers'].includes(flag)) bad(`Flag ${flag} is not available for domain`)
   const triggers = (value(flags, '--triggers') ?? 'malware,industrial_control_system,internet_scanner,iot,open_database,new_service,ssl_expired,vulnerable').split(',').map(item => id(item))
+  return { domain, triggers }
+}
+
+export async function draftDomain(words: string[], flags: Flags, selection: Selection, key: string): Promise<Draft> {
+  const { domain, triggers } = domainInputs(words, flags)
   const grants = value(flags, '--allow-operation')?.split(',') ?? []
   if (!['OP-040', 'OP-013', 'OP-019'].every(operation => grants.includes(operation)) || !flags.has('--accept-unknown-cost')) throw new ToolError('WRITE_GRANT_REQUIRED', 'Domain alert requires grants for DNS, alert and trigger steps', 'Grant OP-040, OP-013 and OP-019 and accept unknown cost')
   const budget = value(flags, '--query-credit-budget') ?? ''; const maximum = value(flags, '--max-requests') ?? ''
@@ -288,14 +293,31 @@ export async function draftImport(words: string[], flags: Flags): Promise<Draft>
   return { command: 'alert import', steps, preconditions: ['/notifier', '/shodan/alert/info'] }
 }
 
+function mutationBounds(command: string, steps: number, preconditions: number): { creditFlag: string; minimumCredit: number; maximumCredit: number; minimumRequests: number; maximumRequests: number } {
+  const policy = command === 'alert domain' ? mutationBudgetPolicy.domain : command === 'alert clear' ? mutationBudgetPolicy.clear : mutationBudgetPolicy.ordinary
+  return {
+    creditFlag: '--query-credit-budget',
+    minimumCredit: Math.max(1, steps * policy.creditPerStep + policy.extraCredits),
+    maximumCredit: budgetCeiling.queryCredits,
+    minimumRequests: preconditions * policy.requestPerPrecondition + Math.max(policy.requestsPerStep * steps, policy.minimumRequests) + policy.extraRequests,
+    maximumRequests: budgetCeiling.requests,
+  }
+}
+
+export function domainBudgetRules(words: string[], flags: Flags): ReturnType<typeof mutationBounds> & { preflight: { minimumCredit: number; minimumRequests: number } } {
+  const { triggers } = domainInputs(words, flags)
+  const preflight = mutationBudgetPolicy.domainPreflight
+  return { ...mutationBounds('alert domain', triggers.length + 1, 1), preflight: { minimumCredit: triggers.length * preflight.creditsPerTrigger + preflight.extraCredits, minimumRequests: preflight.minimumRequests } }
+}
+
 export function budgetRules(draft: Draft): { creditFlag: string; minimumCredit: number; maximumCredit: number; minimumRequests: number; maximumRequests: number } {
   const scan = draft.command.startsWith('scan ')
-  const policy = draft.command === 'alert domain' ? mutationBudgetPolicy.domain : draft.command === 'alert clear' ? mutationBudgetPolicy.clear : mutationBudgetPolicy.ordinary
+  if (!scan) return mutationBounds(draft.command, draft.steps.length, draft.preconditions.length)
   return {
-    creditFlag: scan ? '--scan-credit-budget' : '--query-credit-budget',
-    minimumCredit: draft.command === 'scan submit' && draft.context && 'estimatedScanCredits' in draft.context ? draft.context.estimatedScanCredits : scan ? 1 : Math.max(1, draft.steps.length * policy.creditPerStep + policy.extraCredits),
-    maximumCredit: scan ? budgetCeiling.scanCredits : budgetCeiling.queryCredits,
-    minimumRequests: scan ? 1 : draft.preconditions.length * policy.requestPerPrecondition + Math.max(policy.requestsPerStep * draft.steps.length, policy.minimumRequests) + policy.extraRequests,
+    creditFlag: '--scan-credit-budget',
+    minimumCredit: draft.command === 'scan submit' && draft.context && 'estimatedScanCredits' in draft.context ? draft.context.estimatedScanCredits : 1,
+    maximumCredit: budgetCeiling.scanCredits,
+    minimumRequests: 1,
     maximumRequests: budgetCeiling.requests,
   }
 }
