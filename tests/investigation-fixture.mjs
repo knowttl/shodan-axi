@@ -321,7 +321,7 @@ export async function withInvestigation(check) {
         close: () => { channel.end() },
       }
     }
-    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, setMode: value => { mode = value }, setVendorFailure: value => { vendorFailure = value } })
+    await check({ root, calls, run, runHosted, runInteractive, launchWorker, hostProfile, config, server, certFile, setMode: value => { mode = value }, setVendorFailure: value => { vendorFailure = value } })
   } finally {
     if (server) await new Promise(resolve => server.close(resolve))
     await rm(root, { recursive: true, force: true })

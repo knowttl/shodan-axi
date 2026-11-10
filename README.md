@@ -134,6 +134,9 @@ The approved storage-host list is empty, so packaged `data download` refuses bef
 `download <query>` and `alert download` preview the selected query, destination, size and credit bounds before requiring exact confirmation.
 Their confirmations bind the previewed result count and available query credits, which are checked again before export.
 The generated inventory's `hostedWrites.budgetRules` maps each approved command to its budget rule, and `hostedWrites.budget` supplies the ceilings.
+Consumers can import `hostedWriteBudget` from `dist/hosted-writes.js` to calculate bounds from command words, a flag map and a credential callback using the same planners as execution.
+The calculation reads the selected alerts or domain when needed, requires the corresponding operation grants, and does not create a confirmation or perform a write.
+For alert downloads, supply the intended query credit budget to calculate the request bound; otherwise the minimum credit budget is assumed.
 For mutation rules, the minimum query credits are the greater of one and `creditPerStep * steps + extraCredits`; the minimum requests are `requestPerPrecondition * preconditions + max(requestsPerStep * steps, minimumRequests) + extraRequests`.
 Steps and preconditions are the selected mutation plan's counts; domain preflight additionally requires `creditsPerTrigger * triggers + extraCredits` credits and `minimumRequests` requests before DNS lookup.
 For downloads, the minimum query credits are the result limit divided by `resultsPerCredit`, rounded up, and the minimum requests are those credits plus `searchOverheadRequests`.

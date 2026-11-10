@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { getCACertificates, setDefaultCACertificates } from 'node:tls'
 import { withInvestigation } from './investigation-fixture.mjs'
 import { budgetRules } from '../dist/mutations.js'
 import { exportDraft } from '../dist/bulk-export.js'
+import { hostedWriteBudget } from '../dist/hosted-writes.js'
 
 const admission = 'synthetic-host-admission-binding-01'
 const grant = { '--allow-operation': 'OP-015', '--accept-unknown-cost': true, '--query-credit-budget': '1', '--max-requests': '3' }
@@ -146,4 +148,35 @@ test('published budget rules match mutation and export boundaries', async () => 
   assert.throws(() => exportDraft(['download', 'port:443'], flags))
   flags.set('--query-credit-budget', '2'); flags.set('--max-requests', '3')
   assert.throws(() => exportDraft(['download', 'port:443'], flags))
+})
+
+test('shared bounds match real plans for each write family', { timeout: 120000 }, async () => {
+  await withInvestigation(async ({ root, server, certFile, run }) => {
+    const defaults = getCACertificates('default')
+    setDefaultCACertificates([...defaults, await readFile(certFile, 'utf8')])
+    try {
+      const selection = { name: 'selected', source: 'file', profile: { auth: 'api-key', origin: `https://127.0.0.1:${server.address().port}`, apiKey: { env: 'TEST_SHODAN_KEY' } } }
+      const credentials = async () => ({ selection, key: 'fake-secret' })
+      const path = join(root, 'import.json')
+      await writeFile(path, JSON.stringify([{ name: 'Imported', filters: { ip: ['192.0.2.0/24'] }, triggers: { new_service: {} }, notifiers: [{ id: 'old', provider: 'email', args: { to: 'a@example.test' } }] }]), { mode: 0o600 })
+      for (const [words, flags, credit, requests, preflight] of [
+        [['alert', 'remove', 'alert-a'], { '--allow-operation': 'OP-015', '--accept-unknown-cost': true }, 1, 3],
+        [['alert', 'clear'], { '--allow-operation': 'OP-015', '--accept-unknown-cost': true }, 1, 3],
+        [['alert', 'domain', 'example.test'], { '--allow-operation': 'OP-040,OP-013,OP-019', '--accept-unknown-cost': true, '--triggers': 'new_service' }, 4, 6, { minimumCredit: 4, minimumRequests: 2 }],
+        [['alert', 'import', path], { '--allow-operation': 'OP-027,OP-013,OP-019,OP-023', '--accept-unknown-cost': true }, 4, 10],
+        [['download', 'port:443'], { '--allow-operation': 'OP-003', '--filename': join(root, 'search'), '--limit': '2', '--max-bytes': '10000' }, 1, 3],
+        [['alert', 'download'], { '--allow-operation': 'OP-003', '--filename': join(root, 'alerts'), '--limit': '2', '--max-bytes': '10000', '--query-credit-budget': '2' }, 1, 5],
+      ]) {
+        const bounds = await hostedWriteBudget(words, new Map(Object.entries(flags)), credentials)
+        assert.deepEqual(bounds, { creditFlag: '--query-credit-budget', minimumCredit: credit, maximumCredit: 1000, minimumRequests: requests, maximumRequests: 1000, ...(preflight ? { preflight } : {}) })
+        const args = [...words, ...Object.entries(flags).flatMap(([name, value]) => value === true ? [name] : [name, value])]
+        if (!flags['--query-credit-budget']) args.push('--query-credit-budget', String(credit))
+        args.push('--max-requests', String(requests))
+        const preview = await run(args)
+        assert.equal(preview.body.status, 'preview', preview.stdout)
+      }
+    } finally {
+      setDefaultCACertificates(defaults)
+    }
+  })
 })

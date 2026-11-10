@@ -1,9 +1,9 @@
 import { isAbsolute } from 'node:path'
 import type { Selection } from './credentials.js'
-import { alertExportDraft, exportBudgetPolicy, exportDraft, exportSearch } from './bulk-export.js'
+import { alertExportDraft, exportBudgetPolicy, exportBudgetRules, exportDraft, exportSearch } from './bulk-export.js'
 import { ToolError } from './errors.js'
 import { mutations } from './mutation-catalogue.js'
-import { budgetCeiling, confirmationTtlMs, confirmedWrite, mutationBudgetPolicy, validateMutationFlags } from './mutations.js'
+import { budgetCeiling, budgetRules, confirmationTtlMs, confirmedWrite, draftClear, draftDomain, draftImport, draftMutation, mutationBudgetPolicy, validateMutationFlags } from './mutations.js'
 
 type Flags = Map<string, string | boolean>
 export type WriteRequest = { words: string[]; flags: Flags; phase: 'preview' | 'execute'; confirmation?: string }
@@ -21,10 +21,38 @@ export const hostedWritePolicy = { approved: approvedWrites, budget: budgetCeili
 
 const hostControlled = ['--config', '--profile', '--help', '--output', '--execute', '--confirm']
 
-export async function hostedWrite(request: WriteRequest, credentials: () => Promise<{ selection: Selection; key: string }>, owner: string): Promise<unknown> {
-  const text = request.words.join(' ')
+function approvedWrite(words: string[]): typeof approvedWrites[number] {
+  const text = words.join(' ')
   const approved = approvedWrites.filter(write => text === write.command || text.startsWith(`${write.command} `)).sort((a, b) => b.command.length - a.command.length)[0]
   if (!approved) throw new ToolError('INVALID_INPUT', 'This write is not approved for hosted execution', 'Use an approved write command')
+  return approved
+}
+
+export async function hostedWriteBudget(words: string[], input: Flags, credentials: () => Promise<{ selection: Selection; key: string }>): Promise<ReturnType<typeof budgetRules> & { preflight?: { minimumCredit: number; minimumRequests: number } }> {
+  const approved = approvedWrite(words)
+  for (const flag of input.keys()) if (hostControlled.includes(flag)) throw new ToolError('INVALID_INPUT', `Flag ${flag} is chosen by the host`, 'Remove the flag from the request')
+  const flags = new Map(input)
+  flags.set('--max-requests', String(budgetCeiling.requests))
+  if (approved.operations.includes('OP-003')) {
+    if (!flags.has('--query-credit-budget')) flags.set('--query-credit-budget', String(Math.ceil(Number(flags.get('--limit')) / exportBudgetPolicy.resultsPerCredit)))
+    const draft = approved.command === 'download' ? exportDraft(words, flags) : await (async () => { const { selection, key } = await credentials(); return alertExportDraft(words, flags, selection, key) })()
+    return exportBudgetRules(draft)
+  }
+  validateMutationFlags(flags)
+  let draft
+  if (approved.command === 'alert clear' || approved.command === 'alert domain') {
+    flags.set('--query-credit-budget', String(budgetCeiling.queryCredits))
+    const { selection, key } = await credentials()
+    draft = await (approved.command === 'alert domain' ? draftDomain(words, flags, selection, key) : draftClear(words, flags, selection, key))
+  } else draft = await (approved.command === 'alert import' ? draftImport(words, flags) : draftMutation(words, flags))
+  const rules = budgetRules(draft)
+  if (approved.command !== 'alert domain') return rules
+  const preflight = mutationBudgetPolicy.domainPreflight
+  return { ...rules, preflight: { minimumCredit: (draft.steps.length - 1) * preflight.creditsPerTrigger + preflight.extraCredits, minimumRequests: preflight.minimumRequests } }
+}
+
+export async function hostedWrite(request: WriteRequest, credentials: () => Promise<{ selection: Selection; key: string }>, owner: string): Promise<unknown> {
+  const approved = approvedWrite(request.words)
   for (const flag of request.flags.keys()) if (hostControlled.includes(flag)) throw new ToolError('INVALID_INPUT', `Flag ${flag} is chosen by the host`, 'Remove the flag from the request')
   if ((request.phase === 'execute') !== (request.confirmation !== undefined)) throw new ToolError('INVALID_INPUT', 'Only execution carries a confirmation token', 'Send the token with the execute phase')
   const flags = new Map(request.flags)

@@ -31,6 +31,12 @@ export const exportBudgetPolicy = { resultsPerCredit: 100, searchOverheadRequest
 
 export type ExportDraft = { query: string; queries?: string[]; destination: string; limit: number; maxBytes: number; maxRequests: number; budget: number; fields: string[] }
 
+export function exportBudgetRules(draft: Pick<ExportDraft, 'limit' | 'budget' | 'queries'>): { creditFlag: string; minimumCredit: number; maximumCredit: number; minimumRequests: number; maximumRequests: number } {
+  const minimumCredit = Math.ceil(draft.limit / exportBudgetPolicy.resultsPerCredit)
+  const minimumRequests = Math.max(minimumCredit + exportBudgetPolicy.searchOverheadRequests, draft.queries ? draft.budget + draft.queries.length * exportBudgetPolicy.requestsPerNetwork + exportBudgetPolicy.alertOverheadRequests : 0)
+  return { creditFlag: '--query-credit-budget', minimumCredit, maximumCredit: 1000, minimumRequests, maximumRequests: 1000 }
+}
+
 export function exportDraft(words: string[], flags: Flags): ExportDraft {
   for (const flag of flags.keys()) if (!['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--max-bytes', '--limit', '--filename', '--fields', '--execute', '--confirm'].includes(flag)) invalid(`Flag ${flag} is not available for download`)
   const query = words.slice(1).join(' ').trim()
@@ -45,8 +51,8 @@ export function exportDraft(words: string[], flags: Flags): ExportDraft {
   if (!fields.every(field => /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/.test(field))) invalid('Invalid field selection')
   const limit = number(flags, '--limit', 1000000); const maxBytes = number(flags, '--max-bytes', 1024 * 1024 * 1024)
   const maxRequests = number(flags, '--max-requests', 1000); const budget = number(flags, '--query-credit-budget', 1000)
-  const pages = Math.ceil(limit / exportBudgetPolicy.resultsPerCredit)
-  if (pages > budget || pages + exportBudgetPolicy.searchOverheadRequests > maxRequests) invalid('Request and credit bounds must cover the selected limit')
+  const rules = exportBudgetRules({ limit, budget })
+  if (rules.minimumCredit > budget || rules.minimumRequests > maxRequests) invalid('Request and credit bounds must cover the selected limit')
   return { query, destination, limit, maxBytes, maxRequests, budget, fields }
 }
 
@@ -62,7 +68,7 @@ export async function alertExportDraft(words: string[], flags: Flags, selection:
   if (id && !selected.length) throw new ToolError('NOT_FOUND', 'Alert was not found', 'Inspect alert list')
   const queries = union(selected.flatMap(alert => alert.filters.ip)).map(network => `net:${network}`)
   if (!queries.length) throw new ToolError('NOT_FOUND', 'No monitored networks are available', 'Inspect alert list')
-  if (draft.maxRequests < draft.budget + queries.length * exportBudgetPolicy.requestsPerNetwork + exportBudgetPolicy.alertOverheadRequests) return invalid('Request bound must cover alert selection, counts, account and search requests')
+  if (draft.maxRequests < exportBudgetRules({ ...draft, queries }).minimumRequests) return invalid('Request bound must cover alert selection, counts, account and search requests')
   return { ...draft, query: queries.join(' '), queries }
 }
 
