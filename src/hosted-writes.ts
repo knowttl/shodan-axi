@@ -1,9 +1,9 @@
 import { isAbsolute } from 'node:path'
 import type { Selection } from './credentials.js'
-import { alertExportDraft, exportDraft, exportSearch } from './bulk-export.js'
+import { alertExportDraft, exportBudgetPolicy, exportDraft, exportSearch } from './bulk-export.js'
 import { ToolError } from './errors.js'
 import { mutations } from './mutation-catalogue.js'
-import { budgetCeiling, confirmationTtlMs, confirmedWrite, validateMutationFlags } from './mutations.js'
+import { budgetCeiling, confirmationTtlMs, confirmedWrite, mutationBudgetPolicy, validateMutationFlags } from './mutations.js'
 
 type Flags = Map<string, string | boolean>
 export type WriteRequest = { words: string[]; flags: Flags; phase: 'preview' | 'execute'; confirmation?: string }
@@ -17,7 +17,7 @@ export const approvedWrites: readonly { command: string; operations: string[] }[
   { command: 'download', operations: ['OP-003'] },
   { command: 'alert download', operations: ['OP-003'] },
 ]
-export const hostedWritePolicy = { approved: approvedWrites, budget: budgetCeiling, confirmation: { singleUse: true, ttlMs: confirmationTtlMs, boundTo: ['credential', 'profile', 'owner session', 'command', 'grants', 'budgets', 'observed state'] } }
+export const hostedWritePolicy = { approved: approvedWrites, budget: budgetCeiling, budgetRules: Object.fromEntries(approvedWrites.map(({ command }) => [command, command === 'download' || command === 'alert download' ? { kind: command, ...exportBudgetPolicy } : { kind: 'mutation', ...(command === 'alert clear' ? mutationBudgetPolicy.clear : command === 'alert domain' ? mutationBudgetPolicy.domain : mutationBudgetPolicy.ordinary), ...(command === 'alert domain' ? { preflight: mutationBudgetPolicy.domainPreflight } : {}) }])), confirmation: { singleUse: true, ttlMs: confirmationTtlMs, boundTo: ['credential', 'profile', 'owner session', 'command', 'grants', 'budgets', 'observed state'] } }
 
 const hostControlled = ['--config', '--profile', '--help', '--output', '--execute', '--confirm']
 

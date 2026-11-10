@@ -5574,6 +5574,180 @@
       "scanCredits": 1000000,
       "requests": 1000
     },
+    "budgetRules": {
+      "alert create": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert remove": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert update": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert enable": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert disable": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert ignore": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert unignore": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert notifier add": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert notifier remove": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "notifier create": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "notifier remove": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "notifier update": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "org add": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "org remove": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "alert clear": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 1
+      },
+      "alert domain": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 2,
+        "extraRequests": 1,
+        "minimumRequests": 0,
+        "preflight": {
+          "creditsPerTrigger": 1,
+          "extraCredits": 3,
+          "minimumRequests": 2
+        }
+      },
+      "alert import": {
+        "kind": "mutation",
+        "creditPerStep": 1,
+        "requestPerPrecondition": 1,
+        "requestsPerStep": 2,
+        "extraCredits": 0,
+        "extraRequests": 0,
+        "minimumRequests": 0
+      },
+      "download": {
+        "kind": "download",
+        "resultsPerCredit": 100,
+        "searchOverheadRequests": 2,
+        "alertOverheadRequests": 2,
+        "requestsPerNetwork": 1
+      },
+      "alert download": {
+        "kind": "alert download",
+        "resultsPerCredit": 100,
+        "searchOverheadRequests": 2,
+        "alertOverheadRequests": 2,
+        "requestsPerNetwork": 1
+      }
+    },
     "confirmation": {
       "singleUse": true,
       "ttlMs": 900000,

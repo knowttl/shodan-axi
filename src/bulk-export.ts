@@ -27,6 +27,7 @@ const hash = (text: string): string => createHash('sha256').update(text).digest(
 const record = z.record(z.string(), z.unknown())
 const page = z.object({ total: z.number().int().nonnegative(), matches: z.array(z.object({ metadata: z.object({ truncated: z.array(z.string()).optional() }).passthrough().optional() }).passthrough()) })
 const savedPlan = z.object({ token: z.string().uuid(), binding: z.string(), created: z.number(), mac: z.string().regex(/^[a-f0-9]{64}$/) }).strict()
+export const exportBudgetPolicy = { resultsPerCredit: 100, searchOverheadRequests: 2, alertOverheadRequests: 2, requestsPerNetwork: 1 } as const
 
 export type ExportDraft = { query: string; queries?: string[]; destination: string; limit: number; maxBytes: number; maxRequests: number; budget: number; fields: string[] }
 
@@ -44,7 +45,8 @@ export function exportDraft(words: string[], flags: Flags): ExportDraft {
   if (!fields.every(field => /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/.test(field))) invalid('Invalid field selection')
   const limit = number(flags, '--limit', 1000000); const maxBytes = number(flags, '--max-bytes', 1024 * 1024 * 1024)
   const maxRequests = number(flags, '--max-requests', 1000); const budget = number(flags, '--query-credit-budget', 1000)
-  if (maxRequests < 3 || Math.ceil(limit / 100) > budget || Math.ceil(limit / 100) + 2 > maxRequests) invalid('Request and credit bounds must cover the selected limit')
+  const pages = Math.ceil(limit / exportBudgetPolicy.resultsPerCredit)
+  if (pages > budget || pages + exportBudgetPolicy.searchOverheadRequests > maxRequests) invalid('Request and credit bounds must cover the selected limit')
   return { query, destination, limit, maxBytes, maxRequests, budget, fields }
 }
 
@@ -60,14 +62,13 @@ export async function alertExportDraft(words: string[], flags: Flags, selection:
   if (id && !selected.length) throw new ToolError('NOT_FOUND', 'Alert was not found', 'Inspect alert list')
   const queries = union(selected.flatMap(alert => alert.filters.ip)).map(network => `net:${network}`)
   if (!queries.length) throw new ToolError('NOT_FOUND', 'No monitored networks are available', 'Inspect alert list')
-  if (draft.maxRequests < draft.budget + queries.length + 2) return invalid('Request bound must cover alert selection, counts, account and search requests')
+  if (draft.maxRequests < draft.budget + queries.length * exportBudgetPolicy.requestsPerNetwork + exportBudgetPolicy.alertOverheadRequests) return invalid('Request bound must cover alert selection, counts, account and search requests')
   return { ...draft, query: queries.join(' '), queries }
 }
 
 export async function exportSearch(draft: ExportDraft, flags: Flags, selection: Selection, key: string, owner?: string): Promise<unknown> {
   const root = stateRoot(); const directory = join(root, 'plans'); const signingKey = await planKey(root)
-  const binding = hash(JSON.stringify({ draft, selection, credential: hash(key), ...(owner === undefined ? {} : { owner }) }))
-  if (!flags.has('--execute')) {
+  const observe = async (): Promise<{ total: number; queryCredits: number }> => {
     let total = 0
     for (const query of draft.queries ?? [draft.query]) {
       const count = z.object({ total: z.number().int().nonnegative() }).safeParse(await requestJson(selection.profile.origin, '/shodan/host/count', key, { query }))
@@ -76,10 +77,16 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
     }
     const info = z.object({ query_credits: z.number().nonnegative() }).safeParse(await requestJson(selection.profile.origin, '/api-info', key))
     if (!info.success) throw new ToolError('INVALID_RESPONSE', 'Invalid account information', 'Inspect the service response')
+    return { total, queryCredits: info.data.query_credits }
+  }
+  const bind = (observed: { total: number; queryCredits: number }): string => hash(JSON.stringify({ draft, selection, credential: hash(key), ...(owner === undefined ? {} : { owner }), observed }))
+  if (!flags.has('--execute')) {
+    const observed = await observe()
+    const binding = bind(observed)
     const unsigned = { token: randomUUID(), binding, created: Date.now() }
     const mac = createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest('hex')
     await writePrivate(join(directory, `${unsigned.token}.json`), JSON.stringify({ ...unsigned, mac }))
-    return { status: 'preview', token: unsigned.token, operation: 'OP-003', query: draft.query, total, queryCredits: info.data.query_credits, queryCreditBudget: draft.budget, maxRequests: draft.maxRequests, maxBytes: draft.maxBytes, limit: draft.limit, destination: draft.destination, help: 'Repeat with --execute --confirm <token>' }
+    return { status: 'preview', token: unsigned.token, operation: 'OP-003', query: draft.query, ...observed, queryCreditBudget: draft.budget, maxRequests: draft.maxRequests, maxBytes: draft.maxBytes, limit: draft.limit, destination: draft.destination, help: 'Repeat with --execute --confirm <token>' }
   }
   const token = value(flags, '--confirm')
   if (!token || !z.string().uuid().safeParse(token).success) return invalid('Invalid confirmation token')
@@ -90,7 +97,8 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   if (!plan.success) throw new ToolError('PLAN_STALE', 'Confirmation does not match the request', 'Create a new preview')
   const { mac, ...unsigned } = plan.data
   const expected = createHmac('sha256', signingKey).update(JSON.stringify(unsigned)).digest()
-  if (!timingSafeEqual(expected, Buffer.from(mac, 'hex')) || unsigned.token !== token || unsigned.binding !== binding || Date.now() - unsigned.created > confirmationTtlMs) throw new ToolError('PLAN_STALE', 'Confirmation does not match the request', 'Create a new preview')
+  if (!timingSafeEqual(expected, Buffer.from(mac, 'hex')) || unsigned.token !== token || Date.now() - unsigned.created > confirmationTtlMs) throw new ToolError('PLAN_STALE', 'Confirmation does not match the request', 'Create a new preview')
+  if (unsigned.binding !== bind(await observe())) throw new ToolError('PLAN_STALE', 'Confirmation does not match the request', 'Create a new preview')
   try { await rename(planPath, join(directory, `${token}.used`)) } catch { throw new ToolError('PLAN_STALE', 'Confirmation was already consumed', 'Create a new preview') }
   const partial = `${draft.destination}.partial`
   await preparePrivateDirectory(dirname(draft.destination))
@@ -99,7 +107,7 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   let truncated = false
   async function* rows(): AsyncGenerator<string> {
     for (const query of draft.queries ?? [draft.query]) {
-    for (let pageNumber = 1; count < draft.limit && searchRequests < draft.maxRequests - 2 && searchRequests < draft.budget; pageNumber++) {
+    for (let pageNumber = 1; count < draft.limit && searchRequests < draft.budget && searchRequests < draft.maxRequests - (draft.queries ? draft.queries.length * exportBudgetPolicy.requestsPerNetwork + exportBudgetPolicy.alertOverheadRequests : exportBudgetPolicy.searchOverheadRequests); pageNumber++) {
       searchRequests++
       const response = page.safeParse(await requestJson(selection.profile.origin, '/shodan/host/search', key, { query, page: String(pageNumber), minify: 'false' }))
       if (!response.success) throw new ToolError('INVALID_RESPONSE', 'Invalid search response', 'Inspect the service response')
@@ -128,5 +136,5 @@ export async function exportSearch(draft: ExportDraft, flags: Flags, selection: 
   if (savedBytes > draft.maxBytes) throw new ToolError('LIMIT_REACHED', 'Compressed export exceeds the byte limit', 'Increase the bound or narrow the selection')
   const complete = !truncated && finishedQueries === (draft.queries?.length ?? 1) && count >= total
   if (complete) { await link(partial, draft.destination); await unlink(partial) }
-  return { path: complete ? draft.destination : partial, count, total: countedQueries === (draft.queries?.length ?? 1) ? total : null, requests: searchRequests + (draft.queries ? 1 : 0), complete, bytes: savedBytes, sha256: savedHash.digest('hex'), uncompressedBytes: size }
+  return { path: complete ? draft.destination : partial, count, total: countedQueries === (draft.queries?.length ?? 1) ? total : null, requests: searchRequests + (draft.queries ? draft.queries.length + exportBudgetPolicy.alertOverheadRequests : exportBudgetPolicy.searchOverheadRequests), complete, bytes: savedBytes, sha256: savedHash.digest('hex'), uncompressedBytes: size }
 }

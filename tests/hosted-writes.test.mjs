@@ -3,6 +3,8 @@ import { readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { withInvestigation } from './investigation-fixture.mjs'
+import { budgetRules } from '../dist/mutations.js'
+import { exportDraft } from '../dist/bulk-export.js'
 
 const admission = 'synthetic-host-admission-binding-01'
 const grant = { '--allow-operation': 'OP-015', '--accept-unknown-cost': true, '--query-credit-budget': '1', '--max-requests': '3' }
@@ -84,6 +86,27 @@ test('hosted download previews then saves the export for the owner session', { t
   })
 })
 
+for (const words of [['download', 'port:443'], ['alert', 'download']]) {
+  for (const mode of ['export-count-changed', 'export-credits-changed']) {
+    test(`${words.join(' ')} rejects ${mode} after preview`, { timeout: 60000 }, async () => {
+      await withInvestigation(async ({ root, launchWorker, calls, setMode }) => {
+        const destination = join(root, 'export.json.gz')
+        const flags = { '--allow-operation': 'OP-003', '--filename': destination, '--limit': '2', '--max-bytes': '100000', '--max-requests': '4', '--query-credit-budget': '1' }
+        const worker = launchWorker()
+        worker.send(write('preview', 'preview', words, flags))
+        const preview = await worker.next()
+        assert.equal(preview.result.status, 'preview')
+        setMode(mode)
+        worker.send(write('execute', 'execute', words, flags, preview.result.token))
+        assert.equal((await worker.next()).result.error, 'PLAN_STALE')
+        assert.equal(calls.filter(call => call.path === '/shodan/host/search').length, 0)
+        await assert.rejects(stat(destination), { code: 'ENOENT' })
+        worker.close(); await worker.closed
+      })
+    })
+  }
+}
+
 test('inventory publishes the approved writes and budget ceilings', async () => {
   const { commands, hostedWrites } = JSON.parse(await readFile(new URL('../command-inventory.json', import.meta.url), 'utf8'))
   assert.deepEqual(hostedWrites.budget, { queryCredits: 1000, scanCredits: 1000000, requests: 1000 })
@@ -97,4 +120,30 @@ test('inventory publishes the approved writes and budget ceilings', async () => 
     'notifier update', 'org add', 'org remove',
   ].sort())
   assert.deepEqual(hostedWrites.approved.find(item => item.command === 'alert domain').operations, ['OP-040', 'OP-013', 'OP-019'])
+  assert.deepEqual(Object.keys(hostedWrites.budgetRules).sort(), approved)
+})
+
+test('published budget rules match mutation and export boundaries', async () => {
+  const { hostedWrites } = JSON.parse(await readFile(new URL('../command-inventory.json', import.meta.url), 'utf8'))
+  for (const [command, steps, preconditions, credits, requests] of [
+    ['alert remove', 1, 1, 1, 3], ['alert clear', 0, 0, 1, 1],
+    ['alert clear', 2, 2, 2, 6], ['alert import', 3, 2, 3, 8], ['alert domain', 3, 1, 5, 8],
+  ]) {
+    const policy = hostedWrites.budgetRules[command]
+    const actual = budgetRules({ command, steps: Array(steps).fill({}), preconditions: Array(preconditions).fill('') })
+    assert.equal(actual.minimumCredit, credits)
+    assert.equal(actual.minimumRequests, requests)
+    assert.equal(Math.max(1, policy.creditPerStep * steps + policy.extraCredits), credits)
+    assert.equal(policy.requestPerPrecondition * preconditions + Math.max(policy.requestsPerStep * steps, policy.minimumRequests) + policy.extraRequests, requests)
+  }
+  assert.deepEqual(hostedWrites.budgetRules['alert domain'].preflight, { creditsPerTrigger: 1, extraCredits: 3, minimumRequests: 2 })
+  for (const command of ['download', 'alert download']) {
+    assert.deepEqual(hostedWrites.budgetRules[command], { kind: command, resultsPerCredit: 100, searchOverheadRequests: 2, alertOverheadRequests: 2, requestsPerNetwork: 1 })
+  }
+  const flags = new Map(Object.entries({ '--allow-operation': 'OP-003', '--filename': '/export', '--limit': '101', '--max-bytes': '1000', '--max-requests': '4', '--query-credit-budget': '2' }))
+  assert.equal(exportDraft(['download', 'port:443'], flags).budget, 2)
+  flags.set('--query-credit-budget', '1')
+  assert.throws(() => exportDraft(['download', 'port:443'], flags))
+  flags.set('--query-credit-budget', '2'); flags.set('--max-requests', '3')
+  assert.throws(() => exportDraft(['download', 'port:443'], flags))
 })

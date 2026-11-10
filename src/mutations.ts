@@ -17,6 +17,12 @@ type Flags = Map<string, string | boolean>
 type Step = { operation: string; method: 'POST' | 'PUT' | 'DELETE'; path: string; body?: string; contentType?: string; target: string; readback: string; assign?: string }
 export const confirmationTtlMs = 900000
 export const budgetCeiling = { queryCredits: 1000, scanCredits: 1000000, requests: 1000 }
+export const mutationBudgetPolicy = {
+  ordinary: { creditPerStep: 1, requestPerPrecondition: 1, requestsPerStep: 2, extraCredits: 0, extraRequests: 0, minimumRequests: 0 },
+  clear: { creditPerStep: 1, requestPerPrecondition: 1, requestsPerStep: 2, extraCredits: 0, extraRequests: 0, minimumRequests: 1 },
+  domain: { creditPerStep: 1, requestPerPrecondition: 1, requestsPerStep: 2, extraCredits: 2, extraRequests: 1, minimumRequests: 0 },
+  domainPreflight: { creditsPerTrigger: 1, extraCredits: 3, minimumRequests: 2 },
+} as const
 export type Draft = { command: string; steps: Step[]; preconditions: string[]; context?: { dnsMore: boolean; futureDnsTracking: false } | { targets: string[]; targetCount: number; estimatedScanCredits: number; force: boolean } | { scope: 'internet'; port: number; protocol: string } }
 const allowed = ['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--scan-credit-budget', '--max-requests', '--accept-unknown-cost', '--execute', '--confirm', '--body-file', '--expires', '--vulns', '--triggers', '--silent', '--force']
 const value = (flags: Flags, name: string): string | undefined => { const entry = flags.get(name); return typeof entry === 'string' ? entry : undefined }
@@ -218,7 +224,8 @@ export async function draftDomain(words: string[], flags: Flags, selection: Sele
   const grants = value(flags, '--allow-operation')?.split(',') ?? []
   if (!['OP-040', 'OP-013', 'OP-019'].every(operation => grants.includes(operation)) || !flags.has('--accept-unknown-cost')) throw new ToolError('WRITE_GRANT_REQUIRED', 'Domain alert requires grants for DNS, alert and trigger steps', 'Grant OP-040, OP-013 and OP-019 and accept unknown cost')
   const budget = value(flags, '--query-credit-budget') ?? ''; const maximum = value(flags, '--max-requests') ?? ''
-  if (!/^[1-9]\d*$/.test(budget) || Number(budget) < triggers.length + 3 || !/^[1-9]\d*$/.test(maximum) || Number(maximum) < 2) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Domain alert requires sufficient spending and request bounds', 'Increase --query-credit-budget and --max-requests')
+  const preflight = mutationBudgetPolicy.domainPreflight
+  if (!/^[1-9]\d*$/.test(budget) || Number(budget) < triggers.length * preflight.creditsPerTrigger + preflight.extraCredits || !/^[1-9]\d*$/.test(maximum) || Number(maximum) < preflight.minimumRequests) throw new ToolError('CREDIT_BUDGET_REQUIRED', 'Domain alert requires sufficient spending and request bounds', 'Increase --query-credit-budget and --max-requests')
   const dnsPath = `/dns/domain/${encodeURIComponent(domain)}?history=false`
   const result = z.object({ domain: z.string(), data: z.array(z.object({ type: z.string(), value: z.string() }).passthrough()), more: z.boolean() }).passthrough().safeParse(await requestJson(selection.profile.origin, dnsPath, key))
   if (!result.success || result.data.domain.toLowerCase() !== domain.toLowerCase()) throw new ToolError('INVALID_RESPONSE', 'The service returned an invalid DNS page', 'Retry the selected domain')
@@ -283,11 +290,12 @@ export async function draftImport(words: string[], flags: Flags): Promise<Draft>
 
 export function budgetRules(draft: Draft): { creditFlag: string; minimumCredit: number; maximumCredit: number; minimumRequests: number; maximumRequests: number } {
   const scan = draft.command.startsWith('scan ')
+  const policy = draft.command === 'alert domain' ? mutationBudgetPolicy.domain : draft.command === 'alert clear' ? mutationBudgetPolicy.clear : mutationBudgetPolicy.ordinary
   return {
     creditFlag: scan ? '--scan-credit-budget' : '--query-credit-budget',
-    minimumCredit: draft.command === 'scan submit' && draft.context && 'estimatedScanCredits' in draft.context ? draft.context.estimatedScanCredits : scan ? 1 : draft.steps.length + (draft.command === 'alert domain' ? 2 : 0),
+    minimumCredit: draft.command === 'scan submit' && draft.context && 'estimatedScanCredits' in draft.context ? draft.context.estimatedScanCredits : scan ? 1 : Math.max(1, draft.steps.length * policy.creditPerStep + policy.extraCredits),
     maximumCredit: scan ? budgetCeiling.scanCredits : budgetCeiling.queryCredits,
-    minimumRequests: scan ? 1 : draft.preconditions.length + Math.max(2 * draft.steps.length, draft.command === 'alert clear' ? 1 : 0) + (draft.command === 'alert domain' ? 1 : 0),
+    minimumRequests: scan ? 1 : draft.preconditions.length * policy.requestPerPrecondition + Math.max(policy.requestsPerStep * draft.steps.length, policy.minimumRequests) + policy.extraRequests,
     maximumRequests: budgetCeiling.requests,
   }
 }

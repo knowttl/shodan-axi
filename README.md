@@ -132,6 +132,12 @@ Hosted upload and file-based transformations are deferred pending a defined uplo
 Real dataset retrieval is deferred for this release by owner decision.
 The approved storage-host list is empty, so packaged `data download` refuses before credential access or network requests.
 `download <query>` and `alert download` preview the selected query, destination, size and credit bounds before requiring exact confirmation.
+Their confirmations bind the previewed result count and available query credits, which are checked again before export.
+The generated inventory's `hostedWrites.budgetRules` maps each approved command to its budget rule, and `hostedWrites.budget` supplies the ceilings.
+For mutation rules, the minimum query credits are the greater of one and `creditPerStep * steps + extraCredits`; the minimum requests are `requestPerPrecondition * preconditions + max(requestsPerStep * steps, minimumRequests) + extraRequests`.
+Steps and preconditions are the selected mutation plan's counts; domain preflight additionally requires `creditsPerTrigger * triggers + extraCredits` credits and `minimumRequests` requests before DNS lookup.
+For downloads, the minimum query credits are the result limit divided by `resultsPerCredit`, rounded up, and the minimum requests are those credits plus `searchOverheadRequests`.
+Alert downloads also require requests at least equal to the supplied query credit budget plus `requestsPerNetwork * selected networks + alertOverheadRequests`.
 These native exports require `--allow-operation OP-003`, `--query-credit-budget`, `--max-requests`, `--max-bytes`, `--limit` and `--filename`.
 `alert download` exports the union of monitored networks from all alerts, or one alert selected with `--alert-id <id>`.
 These exports save gzip JSONL, append `.json.gz` to the destination if needed, and refuse to overwrite existing output.
