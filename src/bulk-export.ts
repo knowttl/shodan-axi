@@ -37,7 +37,7 @@ export function exportBudgetRules(draft: Pick<ExportDraft, 'limit' | 'budget' | 
   return { creditFlag: '--query-credit-budget', minimumCredit, maximumCredit: 1000, minimumRequests, maximumRequests: 1000 }
 }
 
-export function exportDraft(words: string[], flags: Flags): ExportDraft {
+export function exportDraft(words: string[], flags: Flags, enforceBounds = true): ExportDraft {
   for (const flag of flags.keys()) if (!['--json', '--output', '--help', '--config', '--profile', '--allow-operation', '--query-credit-budget', '--max-requests', '--max-bytes', '--limit', '--filename', '--fields', '--execute', '--confirm'].includes(flag)) invalid(`Flag ${flag} is not available for download`)
   const query = words.slice(1).join(' ').trim()
   if (!query || query.length > 4096) invalid('A search query is required')
@@ -52,23 +52,23 @@ export function exportDraft(words: string[], flags: Flags): ExportDraft {
   const limit = number(flags, '--limit', 1000000); const maxBytes = number(flags, '--max-bytes', 1024 * 1024 * 1024)
   const maxRequests = number(flags, '--max-requests', 1000); const budget = number(flags, '--query-credit-budget', 1000)
   const rules = exportBudgetRules({ limit, budget })
-  if (rules.minimumCredit > budget || rules.minimumRequests > maxRequests) invalid('Request and credit bounds must cover the selected limit')
+  if (enforceBounds && (rules.minimumCredit > budget || rules.minimumRequests > maxRequests)) invalid('Request and credit bounds must cover the selected limit')
   return { query, destination, limit, maxBytes, maxRequests, budget, fields }
 }
 
-export async function alertExportDraft(words: string[], flags: Flags, selection: Selection, key: string): Promise<ExportDraft> {
+export async function alertExportDraft(words: string[], flags: Flags, selection: Selection, key: string, enforceBounds = true): Promise<ExportDraft> {
   if (words.length !== 2) return invalid('Invalid alert download arguments')
   const id = value(flags, '--alert-id')
   if (id && !/^[A-Za-z0-9_-]{1,128}$/.test(id)) return invalid('Invalid alert ID')
   const ordinaryFlags = new Map(flags); ordinaryFlags.delete('--alert-id')
-  const draft = exportDraft(['download', 'selected-alert-networks'], ordinaryFlags)
+  const draft = exportDraft(['download', 'selected-alert-networks'], ordinaryFlags, enforceBounds)
   const alerts = z.array(z.object({ id: z.string(), filters: z.object({ ip: z.array(z.string()) }) })).safeParse(await requestJson(selection.profile.origin, '/shodan/alert/info', key))
   if (!alerts.success) throw new ToolError('INVALID_RESPONSE', 'Invalid alert list', 'Inspect the service response')
   const selected = id ? alerts.data.filter(alert => alert.id === id) : alerts.data
   if (id && !selected.length) throw new ToolError('NOT_FOUND', 'Alert was not found', 'Inspect alert list')
   const queries = union(selected.flatMap(alert => alert.filters.ip)).map(network => `net:${network}`)
   if (!queries.length) throw new ToolError('NOT_FOUND', 'No monitored networks are available', 'Inspect alert list')
-  if (draft.maxRequests < exportBudgetRules({ ...draft, queries }).minimumRequests) return invalid('Request bound must cover alert selection, counts, account and search requests')
+  if (enforceBounds && draft.maxRequests < exportBudgetRules({ ...draft, queries }).minimumRequests) return invalid('Request bound must cover alert selection, counts, account and search requests')
   return { ...draft, query: queries.join(' '), queries }
 }
 

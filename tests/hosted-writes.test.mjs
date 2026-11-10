@@ -151,7 +151,7 @@ test('published budget rules match mutation and export boundaries', async () => 
 })
 
 test('shared bounds match real plans for each write family', { timeout: 120000 }, async () => {
-  await withInvestigation(async ({ root, server, certFile, run }) => {
+  await withInvestigation(async ({ root, server, certFile, run, setMode }) => {
     const defaults = getCACertificates('default')
     setDefaultCACertificates([...defaults, await readFile(certFile, 'utf8')])
     try {
@@ -174,6 +174,17 @@ test('shared bounds match real plans for each write family', { timeout: 120000 }
         args.push('--max-requests', String(requests))
         const preview = await run(args)
         assert.equal(preview.body.status, 'preview', preview.stdout)
+      }
+      setMode('alert-export-networks')
+      for (const [words, expected] of [[['download', 'port:443'], [4, 4, 4, 4, 4]], [['alert', 'download'], [6, 5, 6, 7, 1004]]]) {
+        for (const [index, budget] of [undefined, '1', '2', '3', '1000'].entries()) {
+          const flags = { '--allow-operation': 'OP-003', '--filename': join(root, 'bounds'), '--limit': '101', '--max-bytes': '10000', ...(budget ? { '--query-credit-budget': budget } : {}), '--max-requests': '1' }
+          const bounds = await hostedWriteBudget(words, new Map(Object.entries(flags)), credentials)
+          assert.equal(bounds.minimumCredit, 2)
+          assert.equal(bounds.minimumRequests, expected[index])
+          const args = [...words, ...Object.entries(flags).flatMap(([name, value]) => [name, value])]
+          assert.equal((await run(args)).body.error, 'INVALID_INPUT')
+        }
       }
     } finally {
       setDefaultCACertificates(defaults)

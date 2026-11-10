@@ -36,7 +36,7 @@ export async function hostedWriteBudget(words: string[], input: Flags, credentia
   flags.set('--max-requests', String(budgetCeiling.requests))
   if (approved.operations.includes('OP-003')) {
     if (!flags.has('--query-credit-budget')) flags.set('--query-credit-budget', String(Math.ceil(Number(flags.get('--limit')) / exportBudgetPolicy.resultsPerCredit)))
-    const draft = approved.command === 'download' ? exportDraft(words, flags) : await (async () => { const { selection, key } = await credentials(); return alertExportDraft(words, flags, selection, key) })()
+    const draft = approved.command === 'download' ? exportDraft(words, flags, false) : await (async () => { const { selection, key } = await credentials(); return alertExportDraft(words, flags, selection, key, false) })()
     return exportBudgetRules(draft)
   }
   validateMutationFlags(flags)

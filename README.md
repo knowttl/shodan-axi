@@ -138,6 +138,7 @@ Consumers can import `hostedWriteBudget` from `dist/hosted-writes.js` to calcula
 The calculation reads selected alerts when needed, requires the corresponding operation grants, and does not create a confirmation or perform a write.
 Domain bounds are calculated locally before any DNS lookup, even when budgets are omitted or insufficient.
 For alert downloads, supply the intended query credit budget to calculate the request bound; otherwise the minimum credit budget is assumed.
+Recalculate the alert download request bound if the query credit budget changes.
 For mutation rules, the minimum query credits are the greater of one and `creditPerStep * steps + extraCredits`; the minimum requests are `requestPerPrecondition * preconditions + max(requestsPerStep * steps, minimumRequests) + extraRequests`.
 Steps and preconditions are the selected mutation plan's counts; domain preflight additionally requires `creditsPerTrigger * triggers + extraCredits` credits and `minimumRequests` requests before DNS lookup.
 For downloads, the minimum query credits are the result limit divided by `resultsPerCredit`, rounded up, and the minimum requests are those credits plus `searchOverheadRequests`.
