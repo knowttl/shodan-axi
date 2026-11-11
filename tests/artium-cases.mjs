@@ -108,7 +108,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       if (tunneled) call.environment.HTTPS_PROXY = tunneled, call.environment.NODE_USE_ENV_PROXY = '1'
       return { ...call, args: ['--import', bootstrap, ...call.args] }
     }
-    app = createApp({ db, runner, audit: new Audit(db), credentialStore: store, resolver: new SharedIdentityResolver(store),
+    app = createApp({ db, runner, audit: new Audit(db), credentialStore: store, resolver: new SharedIdentityResolver(store, db),
       adapters: [adapter], environment: {} })
     const url = await app.listen({ host: '127.0.0.1', port: 0 })
     const token = issueTestAccessToken(db, 'synthetic-development-user')
