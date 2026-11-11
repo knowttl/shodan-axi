@@ -113,6 +113,11 @@ Retry waits use seconds; HTTP dates are converted to a nonnegative wait.
 Queries that may consume credits require an exact operation grant and a credit budget.
 Unknown-cost investigation reads also require `--accept-unknown-cost` and an explicit request cap; stream bounds are described below.
 Ordinary hosted command dispatch admits free reads and refuses all writes before retrieving credentials; chargeable or unknown-cost reads and saved files are available through the native CLI.
+Artium serves approved writes and downloads through dedicated owner-session routes instead of ordinary dispatch.
+Confirmed writes use `POST /v1/tools/shodan-axi/writes/preview`, then `POST /v1/tools/shodan-axi/writes/execute` with the same input and the returned `confirm`.
+Downloads use `POST /v1/tools/shodan-axi/exports/preview`, then `POST /v1/tools/shodan-axi/exports/start`, `GET /v1/tools/shodan-axi/exports/<id>` and a one-time `POST /v1/tools/shodan-axi/exports/<id>/retrieve`.
+Both routes require a per-user operation grant from an Artium administrator, refuse read-only instances, bound budgets by administrator ceilings and issue single-use confirmations.
+Artium documents the settings and request bodies; see its safety and command references.
 `internetdb host` uses no API key; `myip --ipv6` requires an IPv6 transport and never falls back to IPv4.
 Honeyscore and services remain source-only and unverified.
 Trends and Exploits access and redirect behavior remain unverified against live services; `trends <query>`, `exploits search` and `exploits count` are unknown-cost reads.
@@ -214,6 +219,7 @@ Provider mutation encoding and live readback contracts remain unverified.
 ## Contributing
 
 For offline verification, run `npm ci`, `npm run check`, then `npm run check:slice -- --id B6.1 --paths native,artium --offline --with-dependencies`.
+The hosted check also drives the Artium write and export routes against the packed tool and a fake service, covering grant and ceiling refusals before any upstream request, read-only refusal, single-use confirmations, one-time retrieval and audit records without targets.
 The hosted check requires `ARTIUM_FIXTURE_ROOT` and `ARTIUM_FIXTURE_MANIFEST` to identify a matching local Artium build and installed package.
 Hosted reads also require Docker and a prebuilt local `artium-test-node24` image, overridable with `ARTIUM_TEST_IMAGE`; the check runs it without network access as an unprivileged user and never pulls it.
 See [the commissioning checklist](COMMISSIONING.md) for release evidence and separately authorized live checks.

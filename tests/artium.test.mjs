@@ -16,7 +16,7 @@ test('hosted reads use the pinned package against an isolated fake service', { t
     const manifest = await verifyArtiumPackage(root, process.env.ARTIUM_FIXTURE_MANIFEST, temporary)
     const tlsDirectory = join(temporary, 'tls')
     await mkdir(tlsDirectory, { mode: 0o755 })
-    const { keyFile } = await createTestTls(tlsDirectory, 'DNS:localhost')
+    const { keyFile } = await createTestTls(tlsDirectory, 'DNS:localhost,DNS:api.shodan.io')
     await chmod(keyFile, 0o644)
     const installedPackage = '/tools/node_modules/@knowttl/shodan-axi'
     const containerManifest = { ...manifest, installedPackage, toolExecutable: `${installedPackage}/bin/shodan-axi.js`,
