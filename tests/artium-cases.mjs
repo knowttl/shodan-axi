@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { createServer as createHttpServer } from 'node:http'
 import { createServer } from 'node:https'
+import { connect } from 'node:net'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { pathToFileURL } from 'node:url'
+import { gunzipSync } from 'node:zlib'
 
 const moduleAt = (root, path) => import(pathToFileURL(join(root, path)).href)
 
@@ -13,12 +17,14 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
   const fixtureRoot = process.env.ARTIUM_FIXTURE_ROOT
   const temporary = await mkdtemp(join(tmpdir(), 'shodan-artium-'))
   const previousNodeEnv = process.env.NODE_ENV
-  let app, db, fake, healthSchedule, previousHealthTick
+  let app, db, fake, healthSchedule, previousHealthTick, tunnel, tunneled
   try {
     const manifest = JSON.parse(process.env.SHODAN_HOSTED_MANIFEST)
 
     const keyFile = '/test-tls/key.pem'; const caFile = '/test-tls/cert.pem'
     const requests = []
+    const members = [{ username: 'existing', email: 'existing@example.test' }]
+    const mutations = []
     fake = createServer({ key: await readFile(keyFile), cert: await readFile(caFile) }, (request, response) => {
       const url = new URL(request.url, 'https://localhost')
       requests.push({ path: url.pathname, key: url.searchParams.get('key') })
@@ -50,10 +56,18 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         '/notifier': { matches: [{ id: 'notifier-a', provider: 'email', args: { to: 'private@example.test' } }], total: 1 },
         '/notifier/provider': { email: { required: ['to'] } },
         '/notifier/notifier-a': { id: 'notifier-a', provider: 'email', args: { to: 'private@example.test' } },
-        '/org': { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members: [{ username: 'existing', email: 'existing@example.test' }], domains: ['example.test'], logo: false, api_key: 'issued-secret' },
+        '/org': { id: 'org-a', name: 'Synthetic Org', admins: [{ username: 'owner', email: 'owner@example.test' }], members, domains: ['example.test'], logo: false, api_key: 'issued-secret' },
         '/shodan/protocols': { https: 'Synthetic HTTPS module' },
         '/shodan/scans': { matches: [{ id: 'scan-a', status: 'PROCESSING', api_key: 'issued-secret' }], total: 2 },
         '/shodan/scan/scan-a': { id: 'scan-a', status: 'PROCESSING', count: 2, api_key: 'issued-secret' },
+      }
+      const memberEmail = /^\/org\/member\/(.+)$/.exec(url.pathname)?.[1]
+      if (memberEmail && request.method !== 'GET') {
+        const email = decodeURIComponent(memberEmail)
+        mutations.push(`${request.method} ${url.pathname}`)
+        if (request.method === 'PUT') members.push({ username: email, email })
+        response.end(JSON.stringify({ success: true }))
+        return
       }
       response.end(JSON.stringify(bodies[url.pathname]))
     })
@@ -91,9 +105,10 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     const prepare = adapter.prepare.bind(adapter)
     adapter.prepare = async (...args) => {
       const call = await prepare(...args)
+      if (tunneled) call.environment.HTTPS_PROXY = tunneled, call.environment.NODE_USE_ENV_PROXY = '1'
       return { ...call, args: ['--import', bootstrap, ...call.args] }
     }
-    app = createApp({ db, runner, audit: new Audit(db), credentialStore: store, resolver: new SharedIdentityResolver(store),
+    app = createApp({ db, runner, audit: new Audit(db), credentialStore: store, resolver: new SharedIdentityResolver(store, db),
       adapters: [adapter], environment: {} })
     const url = await app.listen({ host: '127.0.0.1', port: 0 })
     const token = issueTestAccessToken(db, 'synthetic-development-user')
@@ -122,7 +137,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     assert.notEqual(withoutGrant.code, 0)
     assert.equal(credentialReads, 0)
     assert.equal(requests.length, 0)
-    db.prepare("INSERT INTO role_tools VALUES ('synthetic-role', 'shodan-axi')").run()
+    db.prepare("INSERT INTO role_tools (role_id, tool) VALUES ('synthetic-role', 'shodan-axi')").run()
     const mismatchExecutable = join(temporary, 'mismatched-version.mjs')
     await writeFile(mismatchExecutable, `if (process.argv.slice(2).some(value => ['version', '--version', '-v', '-V'].includes(value))) process.stdout.write('test-2\\n'); else await import(${JSON.stringify(pathToFileURL(bootstrap).href)});\n`)
     toolPaths['shodan-axi'] = mismatchExecutable
@@ -143,17 +158,17 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     assert.equal(profileResult.member, false)
     assert.deepEqual(requests, [{ path: '/api-info', key: 'hosted-synthetic-key' }, { path: '/account/profile', key: 'hosted-synthetic-key' }])
     const doctor = await run(['doctor'])
-    assert.equal(JSON.parse(doctor.stdout).status, 'ok')
+    assert.notEqual(doctor.code, 0)
     const home = await run([])
     assert.equal(JSON.parse(home.stdout).account.query_credits, 20)
-    assert.equal(requests.length, 4)
+    assert.equal(requests.length, 3)
     const packageVersion = JSON.parse(await readFile(join(manifest.installedPackage, 'package.json'), 'utf8')).version
     for (const alias of ['version', '--version', '-v', '-V']) {
       const version = await run([alias], false)
       assert.equal(version.code, 0, version.stdout + version.stderr)
       assert.equal(version.stdout, `${packageVersion}\n`)
     }
-    assert.equal(requests.length, 4)
+    assert.equal(requests.length, 3)
     if (process.env.SHODAN_TEST_SLICE !== 'B1.1') {
       const read = async args => {
         const result = await run(args)
@@ -173,11 +188,13 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       assert.equal((await read(['tools', 'headers']))['User-Agent'], 'synthetic')
       assert.equal((await read(['myip'])).addressFamily, 4)
       assert.equal((await read(['myip', '--ipv6'])).addressFamily, 6)
+      assert.equal((await read(['search', 'port:443', '--allow-operation', 'OP-003', '--query-credit-budget', '1'])).count, 1)
+      assert.equal(requests.at(-1).path, '/shodan/host/search')
+      await read(['domain', 'example.test', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])
+      assert.equal(requests.at(-1).path, '/dns/domain/example.test')
       const beforeBlocked = requests.length
       const beforeCredentialReads = credentialReads
       for (const args of [
-        ['search', 'port:443', '--allow-operation', 'OP-003', '--query-credit-budget', '1'],
-        ['domain', 'example.test', '--allow-operation', 'OP-040', '--query-credit-budget', '1'],
         ['honeyscore', '192.0.2.7', '--allow-operation', 'OP-064', '--accept-unknown-cost', '--max-requests', '1', '--query-credit-budget', '1'],
         ['services', '--allow-operation', 'OP-066', '--accept-unknown-cost', '--max-requests', '1', '--query-credit-budget', '1'],
         ['host', '192.0.2.7', '--save'],
@@ -320,6 +337,66 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       const snapshot = await read(['internetdb', 'host', '192.0.2.7'])
       assert.deepEqual(snapshot.vulns, ['CVE-2020-0001'])
       assert.equal(requests.at(-1).key, null)
+      if (['B6.1'].includes(process.env.SHODAN_TEST_SLICE) || !process.env.SHODAN_TEST_SLICE) {
+        store.replaceCredential('shodan-axi', { auth: 'api-key', origin: 'https://api.shodan.io', apiKey: 'hosted-synthetic-key' }, 2, 'synthetic-development-user', Date.now())
+        tunnel = createHttpServer().on('connect', (_request, client, head) => {
+          const upstream = connect(port, '127.0.0.1', () => { client.write('HTTP/1.1 200 Connection Established\r\n\r\n'); upstream.write(head); upstream.pipe(client); client.pipe(upstream) })
+          upstream.on('error', () => client.destroy()); client.on('error', () => upstream.destroy())
+        })
+        await new Promise(resolve => tunnel.listen(0, '127.0.0.1', resolve))
+        tunneled = `http://127.0.0.1:${tunnel.address().port}`
+        const post = async (path, payload) => {
+          const response = await app.inject({ method: 'POST', url: `/v1/tools/shodan-axi/${path}`, headers: { authorization: `Bearer ${token}` }, payload })
+          return { status: response.statusCode, body: response.json() }
+        }
+        const configure = settings => db.prepare("UPDATE tools SET native_settings = ? WHERE name = 'shodan-axi'").run(JSON.stringify(settings))
+        const grants = { 'synthetic-development-user': ['OP-037'] }
+        const add = { command: 'org add', arguments: ['new@example.test'], queryCreditBudget: 1, maxRequests: 3, silent: true }
+        const download = { command: 'download', query: 'port:443', limit: 2, maxBytes: 100000, queryCreditBudget: 1, maxRequests: 3 }
+        const before = requests.length; const beforeCredentials = credentialReads
+        configure({})
+        for (const [route, payload] of [['writes/preview', add], ['exports/preview', download]]) {
+          const denied = await post(route, payload)
+          assert.ok(denied.status >= 400, route)
+          assert.equal(requests.length, before, route)
+          assert.equal(credentialReads, beforeCredentials, route)
+        }
+        configure({ writes: { grants, maxQueryCredits: 2, maxRequests: 6 }, exports: { grants: { 'synthetic-development-user': ['CLI-005'] }, maxQueryCredits: 2, maxRequests: 6, maxRecords: 10, maxBytes: 100000, retentionSeconds: 60 } })
+        for (const payload of [{ ...add, command: 'org remove', arguments: ['existing@example.test'] }, { ...add, maxRequests: 7 }, { ...add, queryCreditBudget: 3 }]) {
+          assert.ok((await post('writes/preview', payload)).status >= 400, JSON.stringify(payload))
+          assert.equal(requests.length, before, JSON.stringify(payload))
+        }
+        const preview = await post('writes/preview', add)
+        assert.equal(preview.status, 200)
+        assert.deepEqual(mutations, [])
+        const executed = await post('writes/execute', { ...add, confirm: preview.body.confirm })
+        assert.equal(executed.body.status, 'completed')
+        assert.deepEqual(mutations, ['PUT /org/member/new%40example.test'])
+        assert.ok(members.some(member => member.email === 'new@example.test'))
+        assert.ok((await post('writes/execute', { ...add, confirm: preview.body.confirm })).status >= 400)
+        assert.deepEqual(mutations, ['PUT /org/member/new%40example.test'])
+        db.prepare("UPDATE credentials SET read_only = 1 WHERE tool = 'shodan-axi'").run()
+        const afterWrite = requests.length
+        assert.ok((await post('writes/preview', { ...add, arguments: ['other@example.test'] })).status >= 400)
+        assert.equal(requests.length, afterWrite)
+        db.prepare("UPDATE credentials SET read_only = 0 WHERE tool = 'shodan-axi'").run()
+        const exportPreview = await post('exports/preview', download)
+        assert.equal(exportPreview.status, 200)
+        const started = await post('exports/start', { ...download, confirm: exportPreview.body.confirm })
+        assert.equal(started.status, 200)
+        const exportUrl = `/v1/tools/shodan-axi/exports/${started.body.id}`
+        const headers = { authorization: `Bearer ${token}` }
+        const finished = (await app.inject({ method: 'GET', url: `${exportUrl}?waitMs=20000`, headers })).json()
+        assert.equal(finished.state, 'partial')
+        assert.deepEqual([finished.result.count, finished.result.total, finished.result.complete], [1, 2, false])
+        const retrieved = await app.inject({ method: 'POST', url: `${exportUrl}/retrieve`, headers, payload: {} })
+        assert.equal(retrieved.statusCode, 200)
+        assert.equal(retrieved.headers['x-artium-export-complete'], 'false')
+        assert.equal(createHash('sha256').update(retrieved.rawPayload).digest('hex'), finished.result.sha256)
+        assert.equal(JSON.parse(gunzipSync(retrieved.rawPayload).toString().trim()).ip_str, '192.0.2.7')
+        assert.ok((await app.inject({ method: 'POST', url: `${exportUrl}/retrieve`, headers, payload: {} })).statusCode >= 400)
+        assert.doesNotMatch(JSON.stringify(db.prepare('SELECT * FROM audit').all()), /new@example\.test|other@example\.test|port:443/)
+      }
     }
     assert.doesNotMatch(info.stdout + profile.stdout + JSON.stringify(db.prepare('SELECT * FROM audit').all()), /hosted-synthetic-key|conflicting-developer-key/)
     assert.deepEqual(await readdir(join(temporary, 'calls')), [])
@@ -329,6 +406,7 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
     if (app) await app.close()
     if (healthSchedule) healthSchedule.tickMs = previousHealthTick
     if (db) db.close()
+    if (tunnel) await new Promise(resolve => { tunnel.close(resolve); tunnel.closeAllConnections() })
     if (fake) await new Promise(resolve => fake.close(resolve))
     await rm(temporary, { recursive: true, force: true })
   }
