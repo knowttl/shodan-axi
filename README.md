@@ -112,7 +112,7 @@ Retry waits use seconds; HTTP dates are converted to a nonnegative wait.
 `doctor` makes one account information request and does not establish access to other API families.
 Queries that may consume credits require an exact operation grant and a credit budget.
 Unknown-cost investigation reads also require `--accept-unknown-cost` and an explicit request cap; stream bounds are described below.
-Ordinary hosted command dispatch admits free reads and refuses all writes before retrieving credentials; chargeable or unknown-cost reads and saved files are available through the native CLI.
+Ordinary hosted command dispatch admits free reads and credit-budgeted `search` and `domain`, and refuses `doctor` and all writes before retrieving credentials; unknown-cost reads and saved files are available through the native CLI.
 Artium serves approved writes and downloads through dedicated owner-session routes instead of ordinary dispatch.
 Confirmed writes use `POST /v1/tools/shodan-axi/writes/preview`, then `POST /v1/tools/shodan-axi/writes/execute` with the same input and the returned `confirm`.
 Downloads use `POST /v1/tools/shodan-axi/exports/preview`, then `POST /v1/tools/shodan-axi/exports/start`, `GET /v1/tools/shodan-axi/exports/<id>` and a one-time `POST /v1/tools/shodan-axi/exports/<id>/retrieve`.

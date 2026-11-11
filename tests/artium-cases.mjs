@@ -188,6 +188,10 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
       assert.equal((await read(['tools', 'headers']))['User-Agent'], 'synthetic')
       assert.equal((await read(['myip'])).addressFamily, 4)
       assert.equal((await read(['myip', '--ipv6'])).addressFamily, 6)
+      assert.equal((await read(['search', 'port:443', '--allow-operation', 'OP-003', '--query-credit-budget', '1'])).count, 1)
+      assert.equal(requests.at(-1).path, '/shodan/host/search')
+      await read(['domain', 'example.test', '--allow-operation', 'OP-040', '--query-credit-budget', '1'])
+      assert.equal(requests.at(-1).path, '/dns/domain/example.test')
       const beforeBlocked = requests.length
       const beforeCredentialReads = credentialReads
       for (const args of [
