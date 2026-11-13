@@ -29,10 +29,11 @@
   "packageManager": "npm@11.9.0",
   "scripts": {
     "build": "tsc",
-    "generate": "npm run build && node scripts/check-generated.mjs --write",
-    "check": "npm run build && eslint src && node scripts/check-generated.mjs && node --test tests/types.test.mjs tests/account.test.mjs",
-    "check:slice": "node scripts/check-slice.mjs",
-    "test": "node --test tests/*.test.mjs",
+    "generate": "npm run build && node scripts/check-generated.ts --write",
+    "typecheck": "tsc -p tsconfig.tooling.json",
+    "check": "npm run build && npm run typecheck && eslint --flag unstable_native_nodejs_ts_config src && node scripts/check-generated.ts && node --test tests/types.test.ts tests/account.test.ts",
+    "check:slice": "node scripts/check-slice.ts",
+    "test": "node --test tests/*.test.ts",
     "prepack": "npm run build && npm run check"
   },
   "dependencies": {

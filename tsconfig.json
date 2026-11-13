@@ -12,6 +12,7 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "verbatimModuleSyntax": true,
+    "declaration": true,
     "rootDir": "src",
     "outDir": "dist",
     "types": ["node"]
