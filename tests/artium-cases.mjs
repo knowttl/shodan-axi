@@ -398,6 +398,9 @@ test('local Artium uses the packed account tool and refuses unapproved calls', {
         assert.doesNotMatch(JSON.stringify(db.prepare('SELECT * FROM audit').all()), /new@example\.test|other@example\.test|port:443/)
       }
     }
+    if (process.env.ARTIUM_EXPECT_B1_1_READS) {
+      assert.deepEqual(requests.map(request => request.path), ['/api-info', '/account/profile', '/api-info'])
+    }
     assert.doesNotMatch(info.stdout + profile.stdout + JSON.stringify(db.prepare('SELECT * FROM audit').all()), /hosted-synthetic-key|conflicting-developer-key/)
     assert.deepEqual(await readdir(join(temporary, 'calls')), [])
   } finally {

@@ -27,6 +27,7 @@ test('hosted reads use the pinned package against an isolated fake service', { t
       '--mount', `type=bind,src=${dirname(dirname(manifest.installedPackage))},dst=/tools/node_modules,readonly`,
       '--mount', `type=bind,src=${tlsDirectory},dst=/test-tls,readonly`,
       '--workdir', '/source', '--env', 'ARTIUM_FIXTURE_ROOT=/artium', '--env', 'SHODAN_TEST_SLICE', '--env', `SHODAN_HOSTED_MANIFEST=${JSON.stringify(containerManifest)}`,
+      ...(process.env.SHODAN_TEST_SLICE === 'B1.1' ? ['--env', 'ARTIUM_EXPECT_B1_1_READS=1'] : []),
       image, 'node', '--test', 'tests/artium-cases.mjs'], { stdio: 'inherit', timeout: 170000 })
   } finally { await rm(temporary, { recursive: true, force: true }) }
 })
